@@ -5,6 +5,9 @@ from aiogram.utils import executor
 
 API_TOKEN = os.getenv("API_TOKEN")
 
+if not API_TOKEN:
+    raise ValueError("API_TOKEN is missing")
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
@@ -12,7 +15,10 @@ keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
 def get_rates():
-    crypto = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd").json()
+    crypto = requests.get(
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
+    ).json()
+
     fx = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()["rates"]
 
     return (
@@ -23,11 +29,11 @@ def get_rates():
         fx["CNY"],
     )
 
-@dp.message_handler(commands=['start'])
+@dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     await message.answer("Choose action:", reply_markup=keyboard)
 
-@dp.message_handler(lambda message: message.text == "📊 Exchange rates")
+@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(message: types.Message):
     try:
         btc, eth, ton, rub, cny = get_rates()
@@ -41,7 +47,7 @@ async def rates(message: types.Message):
             f"USD→CNY: {cny}"
         )
     except:
-        await message.answer("Error")
+        await message.answer("Error loading rates")
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
