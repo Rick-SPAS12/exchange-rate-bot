@@ -1,33 +1,19 @@
-import asyncio
 import os
 import requests
+from aiogram import Bot, Dispatcher, types
+from aiogram.utils import executor
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-
-# ---------- TOKEN ----------
 API_TOKEN = os.getenv("API_TOKEN")
 
-if not API_TOKEN:
-    raise ValueError("API_TOKEN is not set in environment variables")
-
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-# ---------- KEYBOARD ----------
-keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📊 Exchange rates")]
-    ],
-    resize_keyboard=True
-)
+keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+keyboard.add("📊 Exchange rates")
 
-# ---------- RATES ----------
 def get_rates():
-    crypto_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
-    crypto = requests.get(crypto_url, timeout=10).json()
-
-    fx = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10).json()["rates"]
+    crypto = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd").json()
+    fx = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()["rates"]
 
     return (
         crypto["bitcoin"]["usd"],
@@ -37,32 +23,25 @@ def get_rates():
         fx["CNY"],
     )
 
-# ---------- HANDLER ----------
-@dp.message(F.text == "/start")
-async def start(message: Message):
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
     await message.answer("Choose action:", reply_markup=keyboard)
 
-
-@dp.message(F.text == "📊 Exchange rates")
-async def rates(message: Message):
+@dp.message_handler(lambda message: message.text == "📊 Exchange rates")
+async def rates(message: types.Message):
     try:
         btc, eth, ton, rub, cny = get_rates()
 
         await message.answer(
-            "📊 Rates:\n\n"
-            f"₿ BTC: ${btc}\n"
-            f"Ξ ETH: ${eth}\n"
-            f"💎 TON: ${ton}\n"
-            f"💵 USD→RUB: {rub}\n"
-            f"🇨🇳 USD→CNY: {cny}"
+            f"📊 Rates:\n\n"
+            f"BTC: ${btc}\n"
+            f"ETH: ${eth}\n"
+            f"TON: ${ton}\n"
+            f"USD→RUB: {rub}\n"
+            f"USD→CNY: {cny}"
         )
-
-    except Exception:
-        await message.answer("Error getting rates")
-
-# ---------- START ----------
-async def main():
-    await dp.start_polling(bot)
+    except:
+        await message.answer("Error")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    executor.start_polling(dp, skip_updates=True)
