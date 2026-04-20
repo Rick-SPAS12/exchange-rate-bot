@@ -1,1 +1,2 @@
-python-3.11.8
+aiogram==2.25.1
+requests==2.31.0
