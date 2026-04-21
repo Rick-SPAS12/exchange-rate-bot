@@ -1,5 +1,6 @@
 import os
 import time
+import asyncio
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -13,15 +14,22 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ---------- anti-spam ----------
-last_update = {}
+# ---------- state ----------
+live_tasks = {}
 
-# ---------- inline button ----------
-inline_kb = InlineKeyboardMarkup().add(
-    InlineKeyboardButton("🔄 Update", callback_data="update")
+# ---------- keyboards ----------
+inline_kb = InlineKeyboardMarkup(row_width=2)
+inline_kb.add(
+    InlineKeyboardButton("🔄 Update", callback_data="update"),
+    InlineKeyboardButton("📡 Live ON", callback_data="live_on")
 )
 
-# ---------- bottom button ----------
+live_kb = InlineKeyboardMarkup(row_width=2)
+live_kb.add(
+    InlineKeyboardButton("🔄 Update", callback_data="update"),
+    InlineKeyboardButton("⛔ Stop Live", callback_data="live_off")
+)
+
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
@@ -43,12 +51,12 @@ def get_rates():
         fx["CNY"],
     )
 
-# ---------- text ----------
+# ---------- TEXT ----------
 def build_text():
     btc, eth, ton, rub, cny = get_rates()
 
     return (
-        "📊 Rates:\n\n"
+        "📊 Rates (LIVE)\n\n"
         f"₿ BTC: ${btc:,.2f}\n"
         f"Ξ ETH: ${eth:,.2f}\n"
         f"💎 TON: ${ton:,.2f}\n"
@@ -57,48 +65,68 @@ def build_text():
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
-# ---------- start ----------
+# ---------- LIVE LOOP ----------
+async def live_update(chat_id, message_id):
+    while True:
+        try:
+            await bot.edit_message_text(
+                build_text(),
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=live_kb,
+                parse_mode="HTML"
+            )
+        except:
+            break
+
+        await asyncio.sleep(10)
+
+# ---------- START ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    await message.answer("Press a button below 👇", reply_markup=keyboard)
+    await message.answer("Press button 👇", reply_markup=keyboard)
 
-# ---------- rates ----------
+# ---------- RATES ----------
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def send_rates(message: types.Message):
-    try:
-        await message.answer(
-            build_text(),
-            reply_markup=inline_kb,
-            parse_mode="HTML"
-        )
-    except:
-        await message.answer("Error loading rates ❌")
+    await message.answer(
+        build_text(),
+        reply_markup=inline_kb,
+        parse_mode="HTML"
+    )
 
-# ---------- update ----------
+# ---------- UPDATE ----------
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    now = time.time()
+    await callback.answer("🔄 Updated")
 
-    # anti-spam
-    if user_id in last_update and now - last_update[user_id] < 3:
-        await callback.answer("⏳ Too fast")
-        return
+    await callback.message.edit_text(
+        build_text(),
+        reply_markup=inline_kb,
+        parse_mode="HTML"
+    )
 
-    last_update[user_id] = now
+# ---------- LIVE ON ----------
+@dp.callback_query_handler(lambda c: c.data == "live_on")
+async def live_on(callback: types.CallbackQuery):
+    await callback.answer("📡 Live started")
 
-    # remove loading animation
-    await callback.answer("🔄 Updating...")
+    task = asyncio.create_task(
+        live_update(callback.message.chat.id, callback.message.message_id)
+    )
 
-    try:
-        await callback.message.edit_text(
-            build_text(),
-            reply_markup=inline_kb,
-            parse_mode="HTML"
-        )
-    except:
-        await callback.answer("Update error ❌", show_alert=True)
+    live_tasks[callback.message.message_id] = task
 
-# ---------- run ----------
+# ---------- LIVE OFF ----------
+@dp.callback_query_handler(lambda c: c.data == "live_off")
+async def live_off(callback: types.CallbackQuery):
+    await callback.answer("⛔ Live stopped")
+
+    task = live_tasks.get(callback.message.message_id)
+    if task:
+        task.cancel()
+        del live_tasks[callback.message.message_id]
+
+# ---------- RUN ----------
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
