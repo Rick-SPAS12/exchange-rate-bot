@@ -123,7 +123,7 @@ def format_line(name, value, old, suffix=""):
 
     change = pct(value, old)
 
-    if abs(change) < 0.05:
+    if abs(change) < 0.01:
         icon = "⚪"
         sign = ""
     elif change > 0:
