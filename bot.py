@@ -45,7 +45,7 @@ async def rates(message: types.Message):
     f"💎 TON: ${ton:,.2f}\n"
     f"💵 USD → RUB: {rub:,.2f} ₽\n"
     f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n"
-    "💡https://t.me/send?start=r-x4zoa")
+    '📌 <a href="https://t.me/send?start=r-x4zoa">CyptoBot</a>')
     except:
         await message.answer("Error loading rates")
 
