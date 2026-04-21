@@ -30,7 +30,7 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- REQUEST ----------
+# ---------- SAFE REQUEST ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -40,7 +40,7 @@ def safe_get(url, params=None):
         pass
     return None
 
-# ---------- FETCH (FIXED) ----------
+# ---------- P2P PRICE ----------
 def get_p2p_price(fiat):
     try:
         url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
@@ -65,24 +65,26 @@ def get_p2p_price(fiat):
     except:
         return None
 
-
+# ---------- FETCH DATA ----------
 def fetch_rates():
     try:
-        crypto = requests.get(
+        crypto = safe_get(
             "https://api.coingecko.com/api/v3/simple/price",
             params={
                 "ids": "bitcoin,ethereum,the-open-network",
                 "vs_currencies": "usd"
-            },
-            timeout=10
-        ).json()
+            }
+        )
+
+        if not crypto:
+            return None
 
         rub = get_p2p_price("RUB")
         cny = get_p2p_price("CNY")
 
-        # 🔥 fallback если P2P упал
+        # fallback если P2P умер
         if rub is None:
-            rub = 90  # safe fallback
+            rub = 90
         if cny is None:
             cny = 7.2
 
@@ -97,26 +99,27 @@ def fetch_rates():
     except:
         return None
 
-# ---------- UPDATE LOOP ----------
+# ---------- UPDATE LOOP (2.5 min) ----------
 async def live_updater():
     global cache, prev_cache
 
     while True:
-        data = fetch_rates()
+        try:
+            data = fetch_rates()
 
-        if data:
-            if cache:
-                prev_cache = cache.copy()
-            else:
-                prev_cache = data.copy()
+            if data:
+                if cache:
+                    prev_cache = cache.copy()
+                cache = data
 
-            cache = data
+        except:
+            pass
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(150)  # 2.5 minutes
 
-# ---------- FORMAT ----------
+# ---------- % CHANGE ----------
 def pct(new, old):
-    if not old or old == 0:
+    if not old:
         return 0
     return ((new - old) / old) * 100
 
@@ -125,13 +128,13 @@ def line(name, value, old):
         return f"{name}: ${value:,.2f}"
 
     change = pct(value, old)
-    arrow = "🟢" if change >= 0 else "🔴"
+    arrow = "📈" if change >= 0 else "📉"
     return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
 
 # ---------- TEXT ----------
 def build_text():
     if not cache:
-        return "⏳ Loading market data... please wait"
+        return "⏳ Loading market data..."
 
     return (
         "📊 LIVE MARKET\n\n"
@@ -168,26 +171,27 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL ----------
+# ---------- CHANNEL POST (5 min) ----------
 async def channel_poster():
-    last = None
+    last_sent = ""
 
     while True:
-        text = build_text()
+        try:
+            text = build_text()
 
-        if text != last and "Loading" not in text:
-            try:
+            if cache and text != last_sent and "Loading" not in text:
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
-                last = text
-            except:
-                pass
+                last_sent = text
 
-        await asyncio.sleep(300)
+        except:
+            pass
+
+        await asyncio.sleep(300)  # 5 minutes
 
 # ---------- STARTUP ----------
 async def on_startup(_):
