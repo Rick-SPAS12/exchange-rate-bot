@@ -39,13 +39,15 @@ async def rates(message: types.Message):
         btc, eth, ton, rub, cny = get_rates()
 
         await message.answer(
-            "📊 Rates:\n\n"
+    "📊 Rates:\n\n"
     f"₿ BTC: ${btc:,.2f}\n"
     f"Ξ ETH: ${eth:,.2f}\n"
     f"💎 TON: ${ton:,.2f}\n"
     f"💵 USD → RUB: {rub:,.2f} ₽\n"
-    f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n"
-    '📌 <a href="https://t.me/send?start=r-x4zoa">CyptoBot</a>')
+    f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
+    '📌 <a href="https://t.me/send?start=r-x4zoa">CryptoBot</a>',
+    parse_mode="HTML"
+)
     except:
         await message.answer("Error loading rates")
 
