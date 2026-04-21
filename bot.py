@@ -82,7 +82,7 @@ async def cache_updater():
 # ---------- TEXT ----------
 def build_text():
     return (
-        "📊 Rates (LIVE)\n\n"
+        "📊 Rates\n\n"
         f"₿ BTC: ${cache['btc']:,.2f}\n"
         f"Ξ ETH: ${cache['eth']:,.2f}\n"
         f"💎 TON: ${cache['ton']:,.2f}\n"
