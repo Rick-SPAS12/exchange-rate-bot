@@ -35,7 +35,8 @@ def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=8)
         return r.json()
-    except:
+    except Exception as e:
+        print("SAFE GET ERROR:", e)
         return None
 
 # ---------- P2P ----------
@@ -58,7 +59,8 @@ def get_p2p_price(fiat):
 
         return float(r["data"][0]["adv"]["price"])
 
-    except:
+    except Exception as e:
+        print("P2P ERROR:", e)
         return None
 
 # ---------- FETCH ----------
@@ -72,7 +74,7 @@ def fetch_rates():
     )
 
     if not crypto:
-        return cache
+        return None
 
     rub = get_p2p_price("RUB")
     cny = get_p2p_price("CNY")
@@ -92,35 +94,39 @@ def fetch_rates():
         "cny": cny,
     }
 
-# ---------- UPDATE ----------
+# ---------- LIVE UPDATE ----------
 async def live_updater():
     global cache, prev_cache
 
     while True:
-        data = fetch_rates()
+        try:
+            data = fetch_rates()
 
-        if data:
-            prev_cache = cache.copy() if cache else data
-            cache = data
+            if data:
+                prev_cache = cache.copy() if cache else data
+                cache = data
+
+        except Exception as e:
+            print("LIVE UPDATE ERROR:", e)
 
         await asyncio.sleep(150)
 
-# ---------- MATH ----------
+# ---------- PRICE FORMAT ----------
+def format_price(name, value):
+    if name == "TON":
+        return f"{value:.2f}"
+    elif name in ["BTC", "ETH"]:
+        return f"{value:,.0f}"
+    else:
+        return f"{value:.2f}"
+
+# ---------- % CHANGE ----------
 def pct(new, old):
     if not old:
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FORMAT PRICE ----------
-def format_price(name, value):
-    if name == "TON":
-        return f"{value:.2f}"        # с центами
-    elif name in ["BTC", "ETH"]:
-        return f"{value:,.0f}"       # без копеек
-    else:
-        return f"{value:.2f}"
-
-# ---------- FORMAT LINE ----------
+# ---------- LINE ----------
 def format_line(name, value, old, suffix=""):
     if not old:
         return f"{name}: {format_price(name, value)}{suffix} ⚪ (0.00%)"
@@ -179,27 +185,39 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL ----------
+# ---------- CHANNEL POST ----------
 async def channel_poster():
+    global cache
+
     last = ""
 
     while True:
-        text = build_text()
+        try:
+            if not cache:
+                await asyncio.sleep(5)
+                continue
 
-        if cache and text != last:
-            await bot.send_message(
-                CHANNEL_ID,
-                text,
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
-            last = text
+            text = build_text()
+
+            if text != last:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                last = text
+
+        except Exception as e:
+            print("CHANNEL ERROR:", e)
 
         await asyncio.sleep(300)
 
-# ---------- START ----------
+# ---------- STARTUP ----------
 async def on_startup(_):
     global cache, prev_cache
+
+    print("BOT STARTED")
 
     data = fetch_rates()
     if data:
