@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
+# ---------- TOKEN ----------
 API_TOKEN = os.getenv("API_TOKEN")
 
 if not API_TOKEN:
@@ -14,19 +15,11 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-CHANNEL_ID = "@your_channel"
-
-# ---------- CACHE ----------
-cache = {
-    "btc": 0,
-    "eth": 0,
-    "ton": 0,
-    "rub": 0,
-    "cny": 0
-}
+# ---------- CHANNEL ----------
+CHANNEL_ID = "@bi11ionaire"
 
 # ---------- KEYBOARD ----------
-inline_kb = InlineKeyboardMarkup(row_width=2)
+inline_kb = InlineKeyboardMarkup()
 inline_kb.add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
@@ -34,16 +27,14 @@ inline_kb.add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- FAST FETCH ----------
-def fetch_rates():
+# ---------- API ----------
+def get_rates():
     crypto = requests.get(
-        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd",
-        timeout=10
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
     ).json()
 
     fx = requests.get(
-        "https://api.exchangerate-api.com/v4/latest/USD",
-        timeout=10
+        "https://api.exchangerate-api.com/v4/latest/USD"
     ).json()["rates"]
 
     return (
@@ -54,41 +45,24 @@ def fetch_rates():
         fx["CNY"],
     )
 
-# ---------- CACHE UPDATER (FAST CORE) ----------
-async def cache_updater():
-    global cache
-
-    while True:
-        try:
-            btc, eth, ton, rub, cny = fetch_rates()
-
-            cache["btc"] = btc
-            cache["eth"] = eth
-            cache["ton"] = ton
-            cache["rub"] = rub
-            cache["cny"] = cny
-
-        except:
-            pass
-
-        await asyncio.sleep(15)  # обновление кеша
-
 # ---------- TEXT ----------
 def build_text():
+    btc, eth, ton, rub, cny = get_rates()
+
     return (
-        "📊 Rates (ULTRA FAST)\n\n"
-        f"₿ BTC: ${cache['btc']:,.2f}\n"
-        f"Ξ ETH: ${cache['eth']:,.2f}\n"
-        f"💎 TON: ${cache['ton']:,.2f}\n"
-        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
+        "📊 Rates\n\n"
+        f"₿ BTC: ${btc:,.2f}\n"
+        f"Ξ ETH: ${eth:,.2f}\n"
+        f"💎 TON: ${ton:,.2f}\n"
+        f"💵 USD → RUB: {rub:,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    await message.answer("Press button 👇", reply_markup=keyboard)
+    await message.answer("Choose option 👇", reply_markup=keyboard)
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(message: types.Message):
@@ -108,20 +82,28 @@ async def update(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-# ---------- CHANNEL POST ----------
+# ---------- CHANNEL POSTER ----------
 async def channel_poster():
     while True:
-        await bot.send_message(
-            @bi11ionaire,
-            build_text(),
-            parse_mode="HTML"
-        )
-        await asyncio.sleep(300)
+        try:
+            await bot.send_message(
+                CHANNEL_ID,
+                build_text(),
+                parse_mode="HTML"
+            )
+        except:
+            pass
 
-# ---------- START ----------
+        await asyncio.sleep(300)  # 5 min
+
+# ---------- STARTUP ----------
+async def on_startup(_):
+    asyncio.create_task(channel_poster())
+
+# ---------- RUN ----------
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(cache_updater())     # 🔥 FAST CACHE
-    loop.create_task(channel_poster())    # 📡 CHANNEL POST
-
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(
+        dp,
+        skip_updates=True,
+        on_startup=on_startup
+    )
