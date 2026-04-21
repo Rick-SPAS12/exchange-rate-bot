@@ -40,11 +40,11 @@ async def rates(message: types.Message):
 
         await message.answer(
             f"📊 Rates:\n\n"
-            f"BTC: ${btc}\n"
-            f"ETH: ${eth}\n"
-            f"TON: ${ton}\n"
-            f"USD→RUB: {rub}\n"
-            f"USD→CNY: {cny}"
+            f"₿ BTC: ${btc}\n"
+            f"Ξ ETH: ${eth}\n"
+            f"💎TON: ${ton}\n"
+            f"💵USD→RUB: {rub}\n"
+            f"🇨🇳 USD→CNY: {cny}"
         )
     except:
         await message.answer("Error loading rates")
