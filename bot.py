@@ -27,9 +27,11 @@ cache = {
     "cny": 0.0
 }
 
+# ---------- PREVIOUS (для % изменения) ----------
+prev_cache = cache.copy()
+
 # ---------- KEYBOARD ----------
-inline_kb = InlineKeyboardMarkup()
-inline_kb.add(
+inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
@@ -65,27 +67,39 @@ def fetch_rates():
         "cny": float(rates.get("CNY", 0)),
     }
 
-# ---------- CACHE UPDATER ----------
-async def cache_updater():
-    global cache
+# ---------- LIVE UPDATE ----------
+async def live_updater():
+    global cache, prev_cache
 
     while True:
         try:
             data = fetch_rates()
             if data:
+                prev_cache = cache.copy()
                 cache = data
         except:
             pass
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(90)
+
+# ---------- % CHANGE ----------
+def percent_change(new, old):
+    if old == 0:
+        return 0
+    return ((new - old) / old) * 100
+
+def format_line(name, value, old):
+    change = percent_change(value, old)
+    arrow = "🟢" if change >= 0 else "🔴"
+    return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
 
 # ---------- TEXT ----------
 def build_text():
     return (
-        "📊 Rates\n\n"
-        f"₿ BTC: ${cache['btc']:,.2f}\n"
-        f"Ξ ETH: ${cache['eth']:,.2f}\n"
-        f"💎 TON: ${cache['ton']:,.2f}\n"
+        "📊 LIVE MARKET (5m)\n\n"
+        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'])}\n"
+        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'])}\n"
+        f"💎 {format_line('TON', cache['ton'], prev_cache['ton'])}\n"
         f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
         f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
@@ -116,16 +130,24 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POST ----------
+# ---------- CHANNEL POST (анти-спам) ----------
 async def channel_poster():
+    last_sent = None
+
     while True:
         try:
-            await bot.send_message(
-                CHANNEL_ID,
-                build_text(),
-                parse_mode="HTML",
-                disable_web_page_preview=True
-            )
+            text = build_text()
+
+            # постим только если изменился текст
+            if text != last_sent:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                last_sent = text
+
         except:
             pass
 
@@ -133,7 +155,7 @@ async def channel_poster():
 
 # ---------- STARTUP ----------
 async def on_startup(_):
-    asyncio.create_task(cache_updater())
+    asyncio.create_task(live_updater())
     asyncio.create_task(channel_poster())
 
 # ---------- RUN ----------
