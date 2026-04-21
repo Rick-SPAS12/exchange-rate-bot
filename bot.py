@@ -44,7 +44,7 @@ async def rates(message: types.Message):
             f"Ξ ETH: ${eth}\n"
             f"💎TON: ${ton}\n"
             f"💵USD→RUB: {rub}\n"
-            f"🇨🇳 USD→CNY: {cny}"
+            f"🇨🇳USD→CNY: {cny}"
         )
     except:
         await message.answer("Error loading rates")
