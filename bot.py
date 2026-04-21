@@ -150,7 +150,7 @@ def build_text():
         return "📊 Loading market data..."
 
     return (
-        "📊 LIVE MARKET\n\n"
+        "<b>📊 LIVE MARKET</b>\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
         f"▽ {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
