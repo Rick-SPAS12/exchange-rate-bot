@@ -27,7 +27,6 @@ cache = {
     "cny": 0.0
 }
 
-# ---------- PREVIOUS (для % изменения) ----------
 prev_cache = cache.copy()
 
 # ---------- KEYBOARD ----------
@@ -56,7 +55,6 @@ def fetch_rates():
             timeout=10
         ).json()
 
-        # ✅ проверка
         if not fx.get("success", True):
             return None
 
@@ -103,6 +101,9 @@ def format_line(name, value, old):
 
 # ---------- TEXT ----------
 def build_text():
+    if cache["btc"] == 0:
+        return "⏳ Loading market data..."
+
     return (
         "📊 LIVE MARKET (5m)\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'])}\n"
@@ -138,7 +139,7 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POST (анти-спам) ----------
+# ---------- CHANNEL POST ----------
 async def channel_poster():
     last_sent = None
 
@@ -146,7 +147,11 @@ async def channel_poster():
         try:
             text = build_text()
 
-            # постим только если изменился текст
+            # не постим если ещё грузится
+            if "Loading" in text:
+                await asyncio.sleep(10)
+                continue
+
             if text != last_sent:
                 await bot.send_message(
                     CHANNEL_ID,
@@ -163,6 +168,13 @@ async def channel_poster():
 
 # ---------- STARTUP ----------
 async def on_startup(_):
+    global cache
+
+    # 🔥 первичная загрузка
+    data = fetch_rates()
+    if data:
+        cache = data
+
     asyncio.create_task(live_updater())
     asyncio.create_task(channel_poster())
 
