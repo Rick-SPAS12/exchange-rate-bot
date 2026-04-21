@@ -40,30 +40,40 @@ keyboard.add("📊 Exchange rates")
 
 # ---------- FETCH ----------
 def fetch_rates():
-    crypto = requests.get(
-        "https://api.coingecko.com/api/v3/simple/price",
-        params={
-            "ids": "bitcoin,ethereum,the-open-network",
-            "vs_currencies": "usd"
-        },
-        timeout=10
-    ).json()
+    try:
+        crypto = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": "bitcoin,ethereum,the-open-network",
+                "vs_currencies": "usd"
+            },
+            timeout=10
+        ).json()
 
-    fx = requests.get(
-        "https://api.exchangerate.host/latest",
-        params={"base": "USD"},
-        timeout=10
-    ).json()
+        fx = requests.get(
+            "https://api.exchangerate.host/latest",
+            params={"base": "USD"},
+            timeout=10
+        ).json()
 
-    rates = fx.get("rates", {})
+        # ✅ проверка
+        if not fx.get("success", True):
+            return None
 
-    return {
-        "btc": crypto["bitcoin"]["usd"],
-        "eth": crypto["ethereum"]["usd"],
-        "ton": crypto["the-open-network"]["usd"],
-        "rub": float(rates.get("RUB", 0)),
-        "cny": float(rates.get("CNY", 0)),
-    }
+        rates = fx.get("rates")
+        if not rates:
+            return None
+
+        return {
+            "btc": crypto["bitcoin"]["usd"],
+            "eth": crypto["ethereum"]["usd"],
+            "ton": crypto["the-open-network"]["usd"],
+            "rub": float(rates.get("RUB", 0)),
+            "cny": float(rates.get("CNY", 0)),
+        }
+
+    except:
+        return None
 
 # ---------- LIVE UPDATE ----------
 async def live_updater():
