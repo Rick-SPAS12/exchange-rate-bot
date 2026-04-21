@@ -35,8 +35,7 @@ def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=8)
         return r.json()
-    except Exception as e:
-        print("SAFE GET ERROR:", e)
+    except:
         return None
 
 # ---------- P2P ----------
@@ -59,8 +58,7 @@ def get_p2p_price(fiat):
 
         return float(r["data"][0]["adv"]["price"])
 
-    except Exception as e:
-        print("P2P ERROR:", e)
+    except:
         return None
 
 # ---------- FETCH ----------
@@ -94,7 +92,7 @@ def fetch_rates():
         "cny": cny,
     }
 
-# ---------- LIVE UPDATE ----------
+# ---------- UPDATE LOOP ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -107,7 +105,7 @@ async def live_updater():
                 cache = data
 
         except Exception as e:
-            print("LIVE UPDATE ERROR:", e)
+            print("UPDATE ERROR:", e)
 
         await asyncio.sleep(150)
 
@@ -120,7 +118,7 @@ def format_price(name, value):
     else:
         return f"{value:.2f}"
 
-# ---------- % CHANGE ----------
+# ---------- CHANGE ----------
 def pct(new, old):
     if not old:
         return 0
@@ -133,14 +131,15 @@ def format_line(name, value, old, suffix=""):
 
     change = pct(value, old)
 
-    if abs(change) < 0.01:
-        icon = "⚪"
-        sign = ""
-    elif change > 0:
+    # 🚀 БЕЗ ПОРОГА — только направление цены
+    if value > old:
         icon = "🟢"
         sign = "+"
-    else:
+    elif value < old:
         icon = "🔴"
+        sign = ""
+    else:
+        icon = "⚪"
         sign = ""
 
     return f"{name}: {format_price(name, value)}{suffix} ({sign}{change:.2f}%) {icon}"
@@ -148,7 +147,7 @@ def format_line(name, value, old, suffix=""):
 # ---------- TEXT ----------
 def build_text():
     if not cache:
-        return "📊 Market loading..."
+        return "📊 Loading market data..."
 
     return (
         "📊 LIVE MARKET\n\n"
@@ -213,7 +212,7 @@ async def channel_poster():
 
         await asyncio.sleep(300)
 
-# ---------- STARTUP ----------
+# ---------- START ----------
 async def on_startup(_):
     global cache, prev_cache
 
