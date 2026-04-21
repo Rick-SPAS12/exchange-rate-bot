@@ -119,7 +119,7 @@ def pct(new, old):
 # ---------- FORMAT FIXED ----------
 def format_line(name, value, old, suffix=""):
     if not old:
-        return f"{name}: ⚪ {value:.2f}{suffix} (0.00%)"
+        return f"{name}: {value:.2f}{suffix} ⚪ (0.00%)"
 
     change = pct(value, old)
 
@@ -133,8 +133,7 @@ def format_line(name, value, old, suffix=""):
         icon = "🔴"
         sign = ""
 
-    return f"{name}: {icon} {value:.2f}{suffix} ({sign}{change:.2f}%)"
-
+    return f"{name}: {value:.2f}{suffix} {icon} ({sign}{change:.2f}%)"
 # ---------- TEXT ----------
 def build_text():
     if not cache:
