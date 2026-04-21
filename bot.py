@@ -30,17 +30,15 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE REQUEST ----------
+# ---------- SAFE GET ----------
 def safe_get(url, params=None):
     try:
-        r = requests.get(url, params=params, timeout=10)
-        if r.status_code == 200:
-            return r.json()
+        r = requests.get(url, params=params, timeout=8)
+        return r.json()
     except:
-        pass
-    return None
+        return None
 
-# ---------- P2P PRICE ----------
+# ---------- SAFE P2P ----------
 def get_p2p_price(fiat):
     try:
         url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
@@ -54,17 +52,18 @@ def get_p2p_price(fiat):
             "tradeType": "BUY"
         }
 
-        r = requests.post(url, json=payload, timeout=10).json()
+        r = requests.post(url, json=payload, timeout=8)
 
-        if not r or "data" not in r or len(r["data"]) == 0:
+        data = r.json()
+        if not data or "data" not in data or len(data["data"]) == 0:
             return None
 
-        return float(r["data"][0]["adv"]["price"])
+        return float(data["data"][0]["adv"]["price"])
 
     except:
         return None
 
-# ---------- FETCH DATA (FIXED) ----------
+# ---------- FETCH (ROBUST) ----------
 def fetch_rates():
     crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -74,13 +73,14 @@ def fetch_rates():
         }
     )
 
+    # ❗ если CoinGecko умер — НЕ ломаем бот
     if not crypto:
-        return None
+        return cache
 
     rub = get_p2p_price("RUB")
     cny = get_p2p_price("CNY")
 
-    # fallback (ВАЖНО)
+    # fallback всегда работает
     if cache:
         rub = rub or cache["rub"]
         cny = cny or cache["cny"]
@@ -96,7 +96,7 @@ def fetch_rates():
         "cny": cny,
     }
 
-# ---------- LIVE UPDATE (2.5 min) ----------
+# ---------- LIVE UPDATE ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -113,7 +113,7 @@ async def live_updater():
 
         await asyncio.sleep(150)
 
-# ---------- % CHANGE ----------
+# ---------- % ----------
 def pct(new, old):
     if not old:
         return 0
@@ -141,7 +141,7 @@ def format_line(name, value, old, suffix=""):
 # ---------- TEXT ----------
 def build_text():
     if not cache:
-        return "📊 Waiting for market data..."
+        return "📊 Market initializing..."
 
     return (
         "📊 LIVE MARKET\n\n"
@@ -178,7 +178,7 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL (5 min) ----------
+# ---------- CHANNEL ----------
 async def channel_poster():
     last_sent = ""
 
@@ -204,13 +204,11 @@ async def channel_poster():
 async def on_startup(_):
     global cache, prev_cache
 
-    for _ in range(5):
-        data = fetch_rates()
-        if data:
-            cache = data
-            prev_cache = data.copy()
-            break
-        await asyncio.sleep(2)
+    # init fallback (ВАЖНО)
+    data = fetch_rates()
+    if data:
+        cache = data
+        prev_cache = data.copy()
 
     asyncio.create_task(live_updater())
     asyncio.create_task(channel_poster())
