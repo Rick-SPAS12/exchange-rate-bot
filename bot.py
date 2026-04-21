@@ -148,7 +148,7 @@ def build_text():
         "📊 LIVE MARKET\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
-        f"▽{format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
+        f"▽ {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
         f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0, ' ₽')}\n"
         f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0, ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
