@@ -16,7 +16,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 # ---------- CHANNEL ----------
-CHANNEL_ID = "@bi11ionaire"  # <-- поменяй на свой канал
+CHANNEL_ID = "@bi11ionaire"  # <-- твой канал
 
 # ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup()
@@ -30,19 +30,25 @@ keyboard.add("📊 Exchange rates")
 # ---------- API ----------
 def get_rates():
     crypto = requests.get(
-        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
+        "https://api.coingecko.com/api/v3/simple/price",
+        params={
+            "ids": "bitcoin,ethereum,the-open-network",
+            "vs_currencies": "usd"
+        },
+        timeout=10
     ).json()
 
     fx = requests.get(
-        "https://api.exchangerate-api.com/v4/latest/USD"
-    ).json()["rates"]
+        "https://open.er-api.com/v6/latest/USD",
+        timeout=10
+    ).json().get("rates", {})
 
     return (
         crypto["bitcoin"]["usd"],
         crypto["ethereum"]["usd"],
         crypto["the-open-network"]["usd"],
-        fx["RUB"],
-        fx["CNY"],
+        fx.get("RUB", 0),
+        fx.get("CNY", 0),
     )
 
 # ---------- TEXT ----------
@@ -56,7 +62,7 @@ def build_text():
         f"💎 TON: ${ton:,.2f}\n"
         f"💵 USD → RUB: {rub:,.2f} ₽\n"
         f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+        '📌 <a href="https://t.me/CryptoBot">"@CryptoBot</a>'
     )
 
 # ---------- HANDLERS ----------
