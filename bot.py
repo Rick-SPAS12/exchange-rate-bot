@@ -30,7 +30,7 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE GET ----------
+# ---------- SAFE REQUEST ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -92,7 +92,7 @@ def fetch_rates():
     except:
         return None
 
-# ---------- UPDATE LOOP (2.5 min) ----------
+# ---------- LIVE UPDATE (2.5 min) ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -110,13 +110,13 @@ async def live_updater():
 
         await asyncio.sleep(150)
 
-# ---------- PERCENT ----------
+# ---------- % CHANGE ----------
 def pct(new, old):
     if not old:
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FORMAT FIXED ----------
+# ---------- FORMAT (ICON AT END) ----------
 def format_line(name, value, old, suffix=""):
     if not old:
         return f"{name}: {value:.2f}{suffix} ⚪ (0.00%)"
@@ -134,6 +134,7 @@ def format_line(name, value, old, suffix=""):
         sign = ""
 
     return f"{name}: {value:.2f}{suffix} {icon} ({sign}{change:.2f}%)"
+
 # ---------- TEXT ----------
 def build_text():
     if not cache:
@@ -143,7 +144,7 @@ def build_text():
         "📊 LIVE MARKET\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
-        f"💎 {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
+        f"▽{format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
         f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0, ' ₽')}\n"
         f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0, ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
