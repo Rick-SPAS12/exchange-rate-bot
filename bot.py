@@ -1,6 +1,7 @@
 import os
 import requests
 from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
 API_TOKEN = os.getenv("API_TOKEN")
@@ -11,9 +12,10 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ---------- КНОПКИ ----------
-keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add("📊 Exchange rates", "🔄 Update")
+# ---------- INLINE КНОПКА ----------
+inline_kb = InlineKeyboardMarkup().add(
+    InlineKeyboardButton("🔄 Update", callback_data="update")
+)
 
 # ---------- ПОЛУЧЕНИЕ КУРСОВ ----------
 def get_rates():
@@ -33,41 +35,48 @@ def get_rates():
         fx["CNY"],
     )
 
-# ---------- ФУНКЦИЯ ВЫВОДА ----------
-async def send_rates(message: types.Message):
+# ---------- ФОРМИРОВАНИЕ ТЕКСТА ----------
+def build_text():
     btc, eth, ton, rub, cny = get_rates()
 
-    await message.answer(
+    return (
         "📊 Rates:\n\n"
         f"₿ BTC: ${btc:,.2f}\n"
         f"Ξ ETH: ${eth:,.2f}\n"
         f"💎 TON: ${ton:,.2f}\n"
         f"💵 USD → RUB: {rub:,.2f} ₽\n"
         f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">CryptoBot</a>',
-        parse_mode="HTML"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
 # ---------- /start ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    await message.answer("Choose action:", reply_markup=keyboard)
+    await message.answer("Press button to get rates 👇")
 
-# ---------- 📊 ----------
+# ---------- ПОЛУЧИТЬ КУРС ----------
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
-async def rates(message: types.Message):
+async def send_rates(message: types.Message):
     try:
-        await send_rates(message)
+        await message.answer(
+            build_text(),
+            reply_markup=inline_kb,
+            parse_mode="HTML"
+        )
     except:
         await message.answer("Error loading rates")
 
-# ---------- 🔄 ----------
-@dp.message_handler(lambda m: m.text == "🔄 Update")
-async def update_rates(message: types.Message):
+# ---------- ОБНОВЛЕНИЕ ----------
+@dp.callback_query_handler(lambda c: c.data == "update")
+async def update(callback: types.CallbackQuery):
     try:
-        await send_rates(message)
+        await callback.message.edit_text(
+            build_text(),
+            reply_markup=inline_kb,
+            parse_mode="HTML"
+        )
     except:
-        await message.answer("Error updating rates")
+        pass
 
 # ---------- ЗАПУСК ----------
 if __name__ == "__main__":
