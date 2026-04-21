@@ -42,29 +42,44 @@ def safe_get(url, params=None):
 
 # ---------- FETCH (FIXED) ----------
 def fetch_rates():
-    crypto = safe_get(
-        "https://api.coingecko.com/api/v3/simple/price",
-        params={
-            "ids": "bitcoin,ethereum,the-open-network",
-            "vs_currencies": "usd"
-        }
-    )
-
-    fx = safe_get("https://open.er-api.com/v6/latest/USD")
-
-    if not crypto or not fx:
-        return None
-
-    rates = fx.get("rates", {})
-
     try:
+        # --- crypto (spot market) ---
+        crypto = requests.get(
+            "https://api.coingecko.com/api/v3/simple/price",
+            params={
+                "ids": "bitcoin,ethereum,the-open-network",
+                "vs_currencies": "usd"
+            },
+            timeout=10
+        ).json()
+
+        # --- Binance P2P (real market fiat rates) ---
+        def p2p_price(fiat):
+            url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
+            payload = {
+                "asset": "USDT",
+                "fiat": fiat,
+                "merchantCheck": False,
+                "page": 1,
+                "rows": 1,
+                "tradeType": "BUY"
+            }
+
+            r = requests.post(url, json=payload, timeout=10).json()
+
+            price = r["data"][0]["adv"]["price"]
+            return float(price)
+
         return {
             "btc": float(crypto["bitcoin"]["usd"]),
             "eth": float(crypto["ethereum"]["usd"]),
             "ton": float(crypto["the-open-network"]["usd"]),
-            "rub": float(rates.get("RUB", 0)),
-            "cny": float(rates.get("CNY", 0)),
+
+            # 🔥 REAL MARKET RATES (P2P Binance)
+            "rub": p2p_price("RUB"),
+            "cny": p2p_price("CNY"),
         }
+
     except:
         return None
 
