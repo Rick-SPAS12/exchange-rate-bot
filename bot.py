@@ -118,31 +118,24 @@ def format_price(name, value):
     else:
         return f"{value:.2f}"
 
-# ---------- CHANGE ----------
-def pct(new, old):
-    if not old:
-        return 0
-    return ((new - old) / old) * 100
-
-# ---------- LINE ----------
+# ---------- LINE FORMAT (NEW LOGIC) ----------
 def format_line(name, value, old, suffix=""):
+    price = format_price(name, value)
+
+    # нет данных или первый запуск
     if not old:
-        return f"{name}: {format_price(name, value)}{suffix} ⚪ (0.00%)"
+        return f"{name}: {price}{suffix} —"
 
-    change = pct(value, old)
+    # нет движения
+    if value == old:
+        return f"{name}: {price}{suffix} —"
 
-    # 🚀 БЕЗ ПОРОГА — только направление цены
+    # движение вверх
     if value > old:
-        icon = "🟢"
-        sign = "+"
-    elif value < old:
-        icon = "🔴"
-        sign = ""
-    else:
-        icon = "⚪"
-        sign = ""
+        return f"{name}: {price}{suffix} ↑ 🟢"
 
-    return f"{name}: {format_price(name, value)}{suffix} ({sign}{change:.2f}%) {icon}"
+    # движение вниз
+    return f"{name}: {price}{suffix} ↓ 🔴"
 
 # ---------- TEXT ----------
 def build_text():
