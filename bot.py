@@ -19,15 +19,8 @@ dp = Dispatcher(bot)
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
-cache = {
-    "btc": 0.0,
-    "eth": 0.0,
-    "ton": 0.0,
-    "rub": 0.0,
-    "cny": 0.0
-}
-
-prev_cache = cache.copy()
+cache = {}
+prev_cache = {}
 
 # ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -37,9 +30,24 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- FETCH ----------
-def fetch_rates():
+# ---------- SAFE REQUEST ----------
+def safe_get(url, timeout=10):
     try:
+        r = requests.get(url, timeout=timeout)
+        if r.status_code == 200:
+            return r.json()
+    except:
+        pass
+    return None
+
+# ---------- FETCH (WITH FALLBACK) ----------
+def fetch_rates():
+    crypto = safe_get(
+        "https://api.coingecko.com/api/v3/simple/price",
+        timeout=10
+    )
+
+    if crypto:
         crypto = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
             params={
@@ -49,27 +57,21 @@ def fetch_rates():
             timeout=10
         ).json()
 
-        fx = requests.get(
-            "https://api.exchangerate.host/latest",
-            params={"base": "USD"},
-            timeout=10
-        ).json()
+    fx = safe_get("https://open.er-api.com/v6/latest/USD")
 
-        if not fx.get("success", True):
-            return None
+    if not crypto or not fx:
+        return None
 
-        rates = fx.get("rates")
-        if not rates:
-            return None
+    rates = fx.get("rates", {})
 
+    try:
         return {
-            "btc": crypto["bitcoin"]["usd"],
-            "eth": crypto["ethereum"]["usd"],
-            "ton": crypto["the-open-network"]["usd"],
+            "btc": float(crypto["bitcoin"]["usd"]),
+            "eth": float(crypto["ethereum"]["usd"]),
+            "ton": float(crypto["the-open-network"]["usd"]),
             "rub": float(rates.get("RUB", 0)),
             "cny": float(rates.get("CNY", 0)),
         }
-
     except:
         return None
 
@@ -79,37 +81,40 @@ async def live_updater():
 
     while True:
         data = fetch_rates()
+
         if data:
-            prev_cache = cache.copy()
+            prev_cache = cache.copy() if cache else data.copy()
             cache = data
 
-        await asyncio.sleep(90)
+        await asyncio.sleep(60)
 
 # ---------- % CHANGE ----------
 def percent_change(new, old):
-    if old == 0:
+    if not old or old == 0:
         return 0
     return ((new - old) / old) * 100
 
 def format_line(name, value, old):
-    if old == 0:
+    if not old:
         return f"{name}: ${value:,.2f}"
+
     change = percent_change(value, old)
     arrow = "🟢" if change >= 0 else "🔴"
+
     return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
 
 # ---------- TEXT ----------
 def build_text():
-    if cache["btc"] == 0:
+    if not cache:
         return "⏳ Loading market data..."
 
     return (
-        "📊 LIVE MARKET (5m)\n\n"
-        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'])}\n"
-        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'])}\n"
-        f"💎 {format_line('TON', cache['ton'], prev_cache['ton'])}\n"
-        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
+        "📊 LIVE MARKET\n\n"
+        f"₿ {format_line('BTC', cache.get('btc', 0), prev_cache.get('btc', 0))}\n"
+        f"Ξ {format_line('ETH', cache.get('eth', 0), prev_cache.get('eth', 0))}\n"
+        f"💎 {format_line('TON', cache.get('ton', 0), prev_cache.get('ton', 0))}\n"
+        f"💵 USD → RUB: {cache.get('rub', 0):,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cache.get('cny', 0):,.2f} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -129,7 +134,7 @@ async def rates(message: types.Message):
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
-    await callback.answer("🔄 Updated")
+    await callback.answer()
 
     await callback.message.edit_text(
         build_text(),
@@ -140,16 +145,12 @@ async def update(callback: types.CallbackQuery):
 
 # ---------- CHANNEL POST ----------
 async def channel_poster():
-    last_sent = None
+    last_sent = ""
 
     while True:
         text = build_text()
 
-        if "Loading" in text:
-            await asyncio.sleep(10)
-            continue
-
-        if text != last_sent:
+        if text != last_sent and "Loading" not in text:
             try:
                 await bot.send_message(
                     CHANNEL_ID,
@@ -167,10 +168,14 @@ async def channel_poster():
 async def on_startup(_):
     global cache, prev_cache
 
-    data = fetch_rates()
-    if data:
-        cache = data
-        prev_cache = data.copy()
+    # 🔥 initial load with retries
+    for _ in range(5):
+        data = fetch_rates()
+        if data:
+            cache = data
+            prev_cache = data.copy()
+            break
+        await asyncio.sleep(2)
 
     asyncio.create_task(live_updater())
     asyncio.create_task(channel_poster())
