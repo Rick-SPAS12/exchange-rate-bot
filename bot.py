@@ -62,7 +62,7 @@ def build_text():
         f"💎 TON: ${ton:,.2f}\n"
         f"💵 USD → RUB: {rub:,.2f} ₽\n"
         f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-        '📌 <a href="https://t.me/CryptoBot">@CryptoBot</a>'
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
 # ---------- HANDLERS ----------
