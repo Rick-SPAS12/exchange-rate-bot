@@ -40,7 +40,7 @@ def safe_get(url, params=None):
         pass
     return None
 
-# ---------- P2P PRICE ----------
+# ---------- P2P ----------
 def get_p2p_price(fiat):
     try:
         url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
@@ -54,18 +54,17 @@ def get_p2p_price(fiat):
             "tradeType": "BUY"
         }
 
-        r = requests.post(url, json=payload, timeout=10)
-        data = r.json()
+        r = requests.post(url, json=payload, timeout=10).json()
 
-        if not data or "data" not in data or len(data["data"]) == 0:
+        if not r or "data" not in r or len(r["data"]) == 0:
             return None
 
-        return float(data["data"][0]["adv"]["price"])
+        return float(r["data"][0]["adv"]["price"])
 
     except:
         return None
 
-# ---------- FETCH DATA ----------
+# ---------- FETCH ----------
 def fetch_rates():
     try:
         crypto = safe_get(
@@ -82,7 +81,6 @@ def fetch_rates():
         rub = get_p2p_price("RUB")
         cny = get_p2p_price("CNY")
 
-        # fallback если P2P умер
         if rub is None:
             rub = 90
         if cny is None:
@@ -99,7 +97,7 @@ def fetch_rates():
     except:
         return None
 
-# ---------- UPDATE LOOP (2.5 min) ----------
+# ---------- UPDATE LOOP ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -115,21 +113,32 @@ async def live_updater():
         except:
             pass
 
-        await asyncio.sleep(150)  # 2.5 minutes
+        await asyncio.sleep(150)  # 2.5 min
 
 # ---------- % CHANGE ----------
 def pct(new, old):
-    if not old:
+    if not old or old == 0:
         return 0
     return ((new - old) / old) * 100
 
-def line(name, value, old):
+# ---------- FORMAT (3 STATES) ----------
+def format_line(name, value, old):
     if not old:
-        return f"{name}: ${value:,.2f}"
+        return f"{name}: {value:.2f} ⚪ (0.00%)"
 
     change = pct(value, old)
-    arrow = "🟢" if change >= 0 else "🔴"
-    return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
+
+    if abs(change) < 0.05:
+        icon = "⚪"
+        sign = ""
+    elif change > 0:
+        icon = "🟢"
+        sign = "+"
+    else:
+        icon = "🔴"
+        sign = ""
+
+    return f"{name}: {value:.2f} {icon} ({sign}{change:.2f}%)"
 
 # ---------- TEXT ----------
 def build_text():
@@ -138,11 +147,11 @@ def build_text():
 
     return (
         "📊 LIVE MARKET\n\n"
-        f"₿ {line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
-        f"Ξ {line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
-        f"💎 {line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n"
-        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
+        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
+        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
+        f"💎 {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
+        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0)} ₽\n"
+        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0)} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -171,7 +180,7 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POST (5 min) ----------
+# ---------- CHANNEL ----------
 async def channel_poster():
     last_sent = ""
 
@@ -191,13 +200,12 @@ async def channel_poster():
         except:
             pass
 
-        await asyncio.sleep(300)  # 5 minutes
+        await asyncio.sleep(300)  # 5 min
 
 # ---------- STARTUP ----------
 async def on_startup(_):
     global cache, prev_cache
 
-    # initial load
     for _ in range(5):
         data = fetch_rates()
         if data:
