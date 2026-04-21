@@ -118,23 +118,23 @@ def format_price(name, value):
     else:
         return f"{value:.2f}"
 
-# ---------- LINE FORMAT (NEW LOGIC) ----------
+# ---------- FINAL FORMAT LOGIC ----------
 def format_line(name, value, old, suffix=""):
     price = format_price(name, value)
 
     # нет данных или первый запуск
     if not old:
-        return f"{name}: {price}{suffix} —"
+        return f"{name}: {price}{suffix}"
 
-    # нет движения
+    # нет движения → просто цена (БЕЗ ВСЕГО)
     if value == old:
-        return f"{name}: {price}{suffix} —"
+        return f"{name}: {price}{suffix}"
 
-    # движение вверх
+    # вверх
     if value > old:
         return f"{name}: {price}{suffix} ↑ 🟢"
 
-    # движение вниз
+    # вниз
     return f"{name}: {price}{suffix} ↓ 🔴"
 
 # ---------- TEXT ----------
