@@ -11,6 +11,9 @@ if not API_TOKEN:
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
+import time
+
+last_update = {}
 
 # ---------- НИЖНЯЯ КНОПКА ----------
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -73,6 +76,15 @@ async def send_rates(message: types.Message):
 # ---------- 🔄 ----------
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    now = time.time()
+
+    if user_id in last_update and now - last_update[user_id] < 3:
+        await callback.answer("⏳ Подожди пару секунд...")
+        return
+
+    last_update[user_id] = now
+
     try:
         await callback.message.edit_text(
             build_text(),
