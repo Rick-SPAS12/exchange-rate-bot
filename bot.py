@@ -30,7 +30,7 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE REQUEST ----------
+# ---------- SAFE GET ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -40,7 +40,7 @@ def safe_get(url, params=None):
         pass
     return None
 
-# ---------- P2P ----------
+# ---------- P2P PRICE ----------
 def get_p2p_price(fiat):
     try:
         url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
@@ -78,13 +78,8 @@ def fetch_rates():
         if not crypto:
             return None
 
-        rub = get_p2p_price("RUB")
-        cny = get_p2p_price("CNY")
-
-        if rub is None:
-            rub = 90
-        if cny is None:
-            cny = 7.2
+        rub = get_p2p_price("RUB") or 90
+        cny = get_p2p_price("CNY") or 7.2
 
         return {
             "btc": float(crypto["bitcoin"]["usd"]),
@@ -97,7 +92,7 @@ def fetch_rates():
     except:
         return None
 
-# ---------- UPDATE LOOP ----------
+# ---------- UPDATE LOOP (2.5 min) ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -113,18 +108,18 @@ async def live_updater():
         except:
             pass
 
-        await asyncio.sleep(150)  # 2.5 min
+        await asyncio.sleep(150)
 
-# ---------- % CHANGE ----------
+# ---------- PERCENT ----------
 def pct(new, old):
-    if not old or old == 0:
+    if not old:
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FORMAT (3 STATES) ----------
-def format_line(name, value, old):
+# ---------- FORMAT FIXED ----------
+def format_line(name, value, old, suffix=""):
     if not old:
-        return f"{name}: {value:.2f} ⚪ (0.00%)"
+        return f"{name}: ⚪ {value:.2f}{suffix} (0.00%)"
 
     change = pct(value, old)
 
@@ -138,7 +133,7 @@ def format_line(name, value, old):
         icon = "🔴"
         sign = ""
 
-    return f"{name}: {value:.2f} {icon} ({sign}{change:.2f}%)"
+    return f"{name}: {icon} {value:.2f}{suffix} ({sign}{change:.2f}%)"
 
 # ---------- TEXT ----------
 def build_text():
@@ -149,9 +144,9 @@ def build_text():
         "📊 LIVE MARKET\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
-        f"▽{format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
-        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0)} ₽\n"
-        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0)} ¥\n\n"
+        f"💎 {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
+        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0, ' ₽')}\n"
+        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0, ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -180,7 +175,7 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL ----------
+# ---------- CHANNEL (5 min) ----------
 async def channel_poster():
     last_sent = ""
 
@@ -200,7 +195,7 @@ async def channel_poster():
         except:
             pass
 
-        await asyncio.sleep(300)  # 5 min
+        await asyncio.sleep(300)
 
 # ---------- STARTUP ----------
 async def on_startup(_):
