@@ -111,10 +111,19 @@ def pct(new, old):
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FORMAT ----------
+# ---------- FORMAT PRICE ----------
+def format_price(name, value):
+    if name == "TON":
+        return f"{value:.2f}"        # с центами
+    elif name in ["BTC", "ETH"]:
+        return f"{value:,.0f}"       # без копеек
+    else:
+        return f"{value:.2f}"
+
+# ---------- FORMAT LINE ----------
 def format_line(name, value, old, suffix=""):
     if not old:
-        return f"{name}: {value:,.0f}{suffix} ⚪ (0.00%)"
+        return f"{name}: {format_price(name, value)}{suffix} ⚪ (0.00%)"
 
     change = pct(value, old)
 
@@ -128,7 +137,7 @@ def format_line(name, value, old, suffix=""):
         icon = "🔴"
         sign = ""
 
-    return f"{name}: {value:,.0f}{suffix} ({sign}{change:.2f}%) {icon}"
+    return f"{name}: {format_price(name, value)}{suffix} ({sign}{change:.2f}%) {icon}"
 
 # ---------- TEXT ----------
 def build_text():
