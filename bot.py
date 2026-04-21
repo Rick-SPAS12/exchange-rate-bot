@@ -16,7 +16,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 # ---------- CHANNEL ----------
-CHANNEL_ID = "@bi11ionaire"
+CHANNEL_ID = "@bi11ionaire"  # <-- поменяй на свой канал
 
 # ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup()
@@ -69,7 +69,8 @@ async def rates(message: types.Message):
     await message.answer(
         build_text(),
         reply_markup=inline_kb,
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
 @dp.callback_query_handler(lambda c: c.data == "update")
@@ -79,22 +80,24 @@ async def update(callback: types.CallbackQuery):
     await callback.message.edit_text(
         build_text(),
         reply_markup=inline_kb,
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POSTER ----------
+# ---------- CHANNEL POST ----------
 async def channel_poster():
     while True:
         try:
             await bot.send_message(
                 CHANNEL_ID,
                 build_text(),
-                parse_mode="HTML"
+                parse_mode="HTML",
+                disable_web_page_preview=True
             )
         except:
             pass
 
-        await asyncio.sleep(300)  # 5 min
+        await asyncio.sleep(300)
 
 # ---------- STARTUP ----------
 async def on_startup(_):
