@@ -41,9 +41,33 @@ def safe_get(url, params=None):
     return None
 
 # ---------- FETCH (FIXED) ----------
+def get_p2p_price(fiat):
+    try:
+        url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
+
+        payload = {
+            "asset": "USDT",
+            "fiat": fiat,
+            "merchantCheck": False,
+            "page": 1,
+            "rows": 1,
+            "tradeType": "BUY"
+        }
+
+        r = requests.post(url, json=payload, timeout=10)
+        data = r.json()
+
+        if not data or "data" not in data or len(data["data"]) == 0:
+            return None
+
+        return float(data["data"][0]["adv"]["price"])
+
+    except:
+        return None
+
+
 def fetch_rates():
     try:
-        # --- crypto (spot market) ---
         crypto = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
             params={
@@ -53,31 +77,21 @@ def fetch_rates():
             timeout=10
         ).json()
 
-        # --- Binance P2P (real market fiat rates) ---
-        def p2p_price(fiat):
-            url = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
-            payload = {
-                "asset": "USDT",
-                "fiat": fiat,
-                "merchantCheck": False,
-                "page": 1,
-                "rows": 1,
-                "tradeType": "BUY"
-            }
+        rub = get_p2p_price("RUB")
+        cny = get_p2p_price("CNY")
 
-            r = requests.post(url, json=payload, timeout=10).json()
-
-            price = r["data"][0]["adv"]["price"]
-            return float(price)
+        # 🔥 fallback если P2P упал
+        if rub is None:
+            rub = 90  # safe fallback
+        if cny is None:
+            cny = 7.2
 
         return {
             "btc": float(crypto["bitcoin"]["usd"]),
             "eth": float(crypto["ethereum"]["usd"]),
             "ton": float(crypto["the-open-network"]["usd"]),
-
-            # 🔥 REAL MARKET RATES (P2P Binance)
-            "rub": p2p_price("RUB"),
-            "cny": p2p_price("CNY"),
+            "rub": rub,
+            "cny": cny,
         }
 
     except:
