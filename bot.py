@@ -12,6 +12,10 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
+# ---------- НИЖНЯЯ КНОПКА ----------
+keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+keyboard.add("📊 Exchange rates")
+
 # ---------- INLINE КНОПКА ----------
 inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
@@ -35,7 +39,7 @@ def get_rates():
         fx["CNY"],
     )
 
-# ---------- ФОРМИРОВАНИЕ ТЕКСТА ----------
+# ---------- ТЕКСТ ----------
 def build_text():
     btc, eth, ton, rub, cny = get_rates()
 
@@ -52,9 +56,9 @@ def build_text():
 # ---------- /start ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    await message.answer("Press button to get rates 👇")
+    await message.answer("Press button 👇", reply_markup=keyboard)
 
-# ---------- ПОЛУЧИТЬ КУРС ----------
+# ---------- 📊 ----------
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def send_rates(message: types.Message):
     try:
@@ -66,7 +70,7 @@ async def send_rates(message: types.Message):
     except:
         await message.answer("Error loading rates")
 
-# ---------- ОБНОВЛЕНИЕ ----------
+# ---------- 🔄 ----------
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     try:
