@@ -78,13 +78,10 @@ async def live_updater():
     global cache, prev_cache
 
     while True:
-        try:
-            data = fetch_rates()
-            if data:
-                prev_cache = cache.copy()
-                cache = data
-        except:
-            pass
+        data = fetch_rates()
+        if data:
+            prev_cache = cache.copy()
+            cache = data
 
         await asyncio.sleep(90)
 
@@ -95,6 +92,8 @@ def percent_change(new, old):
     return ((new - old) / old) * 100
 
 def format_line(name, value, old):
+    if old == 0:
+        return f"{name}: ${value:,.2f}"
     change = percent_change(value, old)
     arrow = "🟢" if change >= 0 else "🔴"
     return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
@@ -144,15 +143,14 @@ async def channel_poster():
     last_sent = None
 
     while True:
-        try:
-            text = build_text()
+        text = build_text()
 
-            # не постим если ещё грузится
-            if "Loading" in text:
-                await asyncio.sleep(10)
-                continue
+        if "Loading" in text:
+            await asyncio.sleep(10)
+            continue
 
-            if text != last_sent:
+        if text != last_sent:
+            try:
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
@@ -160,20 +158,19 @@ async def channel_poster():
                     disable_web_page_preview=True
                 )
                 last_sent = text
-
-        except:
-            pass
+            except:
+                pass
 
         await asyncio.sleep(300)
 
 # ---------- STARTUP ----------
 async def on_startup(_):
-    global cache
+    global cache, prev_cache
 
-    # 🔥 первичная загрузка
     data = fetch_rates()
     if data:
         cache = data
+        prev_cache = data.copy()
 
     asyncio.create_task(live_updater())
     asyncio.create_task(channel_poster())
