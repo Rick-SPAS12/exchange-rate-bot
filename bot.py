@@ -1,7 +1,7 @@
 import os
-import time
 import asyncio
 import requests
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
@@ -14,10 +14,13 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ---------- state ----------
+# 👉 твой канал
+CHANNEL_ID = "@your_channel"
+
+# ---------- STATE ----------
 live_tasks = {}
 
-# ---------- keyboards ----------
+# ---------- KEYBOARDS ----------
 inline_kb = InlineKeyboardMarkup(row_width=2)
 inline_kb.add(
     InlineKeyboardButton("🔄 Update", callback_data="update"),
@@ -81,6 +84,20 @@ async def live_update(chat_id, message_id):
 
         await asyncio.sleep(10)
 
+# ---------- CHANNEL POSTER ----------
+async def channel_poster():
+    while True:
+        try:
+            await bot.send_message(
+                CHANNEL_ID,
+                build_text(),
+                parse_mode="HTML"
+            )
+        except:
+            pass
+
+        await asyncio.sleep(300)  # 5 минут
+
 # ---------- START ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
@@ -129,4 +146,7 @@ async def live_off(callback: types.CallbackQuery):
 
 # ---------- RUN ----------
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(channel_poster())
+
     executor.start_polling(dp, skip_updates=True)
