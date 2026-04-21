@@ -112,7 +112,7 @@ async def update(callback: types.CallbackQuery):
 async def channel_poster():
     while True:
         await bot.send_message(
-            CHANNEL_ID,
+            @bi11ionaire,
             build_text(),
             parse_mode="HTML"
         )
