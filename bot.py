@@ -12,7 +12,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add("📊 Exchange rates")
+keyboard.add("📊 Exchange rates", "🔄 Update")
 
 def get_rates():
     crypto = requests.get(
@@ -29,27 +29,23 @@ def get_rates():
         fx["CNY"],
     )
 
-@dp.message_handler(commands=["start"])
-async def start(message: types.Message):
-    await message.answer("Choose action:", reply_markup=keyboard)
-
-@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
-async def rates(message: types.Message):
+@dp.message_handler(lambda m: m.text == "🔄 Update")
+async def update_rates(message: types.Message):
     try:
         btc, eth, ton, rub, cny = get_rates()
 
         await message.answer(
-    "📊 Rates:\n\n"
-    f"₿ BTC: ${btc:,.2f}\n"
-    f"Ξ ETH: ${eth:,.2f}\n"
-    f"💎 TON: ${ton:,.2f}\n"
-    f"💵 USD → RUB: {rub:,.2f} ₽\n"
-    f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-    '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>',
-    parse_mode="HTML"
-)
-    except:
-        await message.answer("Error loading rates")
+            "📊 Rates:\n\n"
+            f"₿ BTC: ${btc:,.2f}\n"
+            f"Ξ ETH: ${eth:,.2f}\n"
+            f"💎 TON: ${ton:,.2f}\n"
+            f"💵 USD → RUB: {rub:,.2f} ₽\n"
+            f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
+            '📌 <a href="https://t.me/send?start=r-x4zoa">CryptoBot</a>',
+            parse_mode="HTML"
+        )
 
+    except:
+        await message.answer("Error updating rates")
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
