@@ -118,7 +118,13 @@ def format_price(name, value):
     else:
         return f"{value:.2f}"
 
-# ---------- FINAL FORMAT LOGIC ----------
+# ---------- % CHANGE ----------
+def pct(new, old):
+    if not old:
+        return 0
+    return ((new - old) / old) * 100
+
+# ---------- FINAL LINE FORMAT ----------
 def format_line(name, value, old, suffix=""):
     price = format_price(name, value)
 
@@ -126,16 +132,18 @@ def format_line(name, value, old, suffix=""):
     if not old:
         return f"{name}: {price}{suffix}"
 
-    # нет движения → просто цена (БЕЗ ВСЕГО)
+    change = pct(value, old)
+
+    # нет движения → просто цена
     if value == old:
         return f"{name}: {price}{suffix}"
 
     # вверх
     if value > old:
-        return f"{name}: {price}{suffix} ↑ 🟢"
+        return f"{name}: {price}{suffix} (+{change:.2f}%) ↑ 🟢"
 
     # вниз
-    return f"{name}: {price}{suffix} ↓ 🔴"
+    return f"{name}: {price}{suffix} ({change:.2f}%) ↓ 🔴"
 
 # ---------- TEXT ----------
 def build_text():
