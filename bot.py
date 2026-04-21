@@ -64,33 +64,37 @@ def get_p2p_price(fiat):
     except:
         return None
 
-# ---------- FETCH ----------
+# ---------- FETCH DATA (FIXED) ----------
 def fetch_rates():
-    try:
-        crypto = safe_get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin,ethereum,the-open-network",
-                "vs_currencies": "usd"
-            }
-        )
-
-        if not crypto:
-            return None
-
-        rub = get_p2p_price("RUB") or 90
-        cny = get_p2p_price("CNY") or 7.2
-
-        return {
-            "btc": float(crypto["bitcoin"]["usd"]),
-            "eth": float(crypto["ethereum"]["usd"]),
-            "ton": float(crypto["the-open-network"]["usd"]),
-            "rub": rub,
-            "cny": cny,
+    crypto = safe_get(
+        "https://api.coingecko.com/api/v3/simple/price",
+        params={
+            "ids": "bitcoin,ethereum,the-open-network",
+            "vs_currencies": "usd"
         }
+    )
 
-    except:
+    if not crypto:
         return None
+
+    rub = get_p2p_price("RUB")
+    cny = get_p2p_price("CNY")
+
+    # fallback (ВАЖНО)
+    if cache:
+        rub = rub or cache["rub"]
+        cny = cny or cache["cny"]
+    else:
+        rub = rub or 90
+        cny = cny or 7.2
+
+    return {
+        "btc": float(crypto["bitcoin"]["usd"]),
+        "eth": float(crypto["ethereum"]["usd"]),
+        "ton": float(crypto["the-open-network"]["usd"]),
+        "rub": rub,
+        "cny": cny,
+    }
 
 # ---------- LIVE UPDATE (2.5 min) ----------
 async def live_updater():
@@ -101,8 +105,7 @@ async def live_updater():
             data = fetch_rates()
 
             if data:
-                if cache:
-                    prev_cache = cache.copy()
+                prev_cache = cache.copy() if cache else data
                 cache = data
 
         except:
@@ -116,7 +119,7 @@ def pct(new, old):
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FORMAT (ICON AT END) ----------
+# ---------- FORMAT ----------
 def format_line(name, value, old, suffix=""):
     if not old:
         return f"{name}: {value:.2f}{suffix} ⚪ (0.00%)"
@@ -138,7 +141,7 @@ def format_line(name, value, old, suffix=""):
 # ---------- TEXT ----------
 def build_text():
     if not cache:
-        return "⏳ Loading market data..."
+        return "📊 Waiting for market data..."
 
     return (
         "📊 LIVE MARKET\n\n"
@@ -183,7 +186,7 @@ async def channel_poster():
         try:
             text = build_text()
 
-            if cache and text != last_sent and "Loading" not in text:
+            if cache and text != last_sent:
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
