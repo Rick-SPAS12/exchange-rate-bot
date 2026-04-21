@@ -14,36 +14,36 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# 👉 твой канал
 CHANNEL_ID = "@your_channel"
 
-# ---------- STATE ----------
-live_tasks = {}
+# ---------- CACHE ----------
+cache = {
+    "btc": 0,
+    "eth": 0,
+    "ton": 0,
+    "rub": 0,
+    "cny": 0
+}
 
-# ---------- KEYBOARDS ----------
+# ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup(row_width=2)
 inline_kb.add(
-    InlineKeyboardButton("🔄 Update", callback_data="update"),
-    InlineKeyboardButton("📡 Live ON", callback_data="live_on")
-)
-
-live_kb = InlineKeyboardMarkup(row_width=2)
-live_kb.add(
-    InlineKeyboardButton("🔄 Update", callback_data="update"),
-    InlineKeyboardButton("⛔ Stop Live", callback_data="live_off")
+    InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- API ----------
-def get_rates():
+# ---------- FAST FETCH ----------
+def fetch_rates():
     crypto = requests.get(
-        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd",
+        timeout=10
     ).json()
 
     fx = requests.get(
-        "https://api.exchangerate-api.com/v4/latest/USD"
+        "https://api.exchangerate-api.com/v4/latest/USD",
+        timeout=10
     ).json()["rates"]
 
     return (
@@ -54,65 +54,50 @@ def get_rates():
         fx["CNY"],
     )
 
-# ---------- TEXT ----------
-def build_text():
-    btc, eth, ton, rub, cny = get_rates()
+# ---------- CACHE UPDATER (FAST CORE) ----------
+async def cache_updater():
+    global cache
 
-    return (
-        "📊 Rates (LIVE)\n\n"
-        f"₿ BTC: ${btc:,.2f}\n"
-        f"Ξ ETH: ${eth:,.2f}\n"
-        f"💎 TON: ${ton:,.2f}\n"
-        f"💵 USD → RUB: {rub:,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
-    )
-
-# ---------- LIVE LOOP ----------
-async def live_update(chat_id, message_id):
     while True:
         try:
-            await bot.edit_message_text(
-                build_text(),
-                chat_id=chat_id,
-                message_id=message_id,
-                reply_markup=live_kb,
-                parse_mode="HTML"
-            )
-        except:
-            break
+            btc, eth, ton, rub, cny = fetch_rates()
 
-        await asyncio.sleep(10)
+            cache["btc"] = btc
+            cache["eth"] = eth
+            cache["ton"] = ton
+            cache["rub"] = rub
+            cache["cny"] = cny
 
-# ---------- CHANNEL POSTER ----------
-async def channel_poster():
-    while True:
-        try:
-            await bot.send_message(
-                CHANNEL_ID,
-                build_text(),
-                parse_mode="HTML"
-            )
         except:
             pass
 
-        await asyncio.sleep(300)  # 5 минут
+        await asyncio.sleep(15)  # обновление кеша
 
-# ---------- START ----------
+# ---------- TEXT ----------
+def build_text():
+    return (
+        "📊 Rates (ULTRA FAST)\n\n"
+        f"₿ BTC: ${cache['btc']:,.2f}\n"
+        f"Ξ ETH: ${cache['eth']:,.2f}\n"
+        f"💎 TON: ${cache['ton']:,.2f}\n"
+        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+    )
+
+# ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     await message.answer("Press button 👇", reply_markup=keyboard)
 
-# ---------- RATES ----------
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
-async def send_rates(message: types.Message):
+async def rates(message: types.Message):
     await message.answer(
         build_text(),
         reply_markup=inline_kb,
         parse_mode="HTML"
     )
 
-# ---------- UPDATE ----------
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     await callback.answer("🔄 Updated")
@@ -123,30 +108,20 @@ async def update(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
-# ---------- LIVE ON ----------
-@dp.callback_query_handler(lambda c: c.data == "live_on")
-async def live_on(callback: types.CallbackQuery):
-    await callback.answer("📡 Live started")
+# ---------- CHANNEL POST ----------
+async def channel_poster():
+    while True:
+        await bot.send_message(
+            CHANNEL_ID,
+            build_text(),
+            parse_mode="HTML"
+        )
+        await asyncio.sleep(300)
 
-    task = asyncio.create_task(
-        live_update(callback.message.chat.id, callback.message.message_id)
-    )
-
-    live_tasks[callback.message.message_id] = task
-
-# ---------- LIVE OFF ----------
-@dp.callback_query_handler(lambda c: c.data == "live_off")
-async def live_off(callback: types.CallbackQuery):
-    await callback.answer("⛔ Live stopped")
-
-    task = live_tasks.get(callback.message.message_id)
-    if task:
-        task.cancel()
-        del live_tasks[callback.message.message_id]
-
-# ---------- RUN ----------
+# ---------- START ----------
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    loop.create_task(channel_poster())
+    loop.create_task(cache_updater())     # 🔥 FAST CACHE
+    loop.create_task(channel_poster())    # 📡 CHANNEL POST
 
     executor.start_polling(dp, skip_updates=True)
