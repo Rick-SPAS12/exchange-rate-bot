@@ -19,8 +19,8 @@ dp = Dispatcher(bot)
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
-cache = {}
-prev_cache = {}
+cache = None
+prev_cache = None
 
 # ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -30,32 +30,25 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE REQUEST ----------
-def safe_get(url, timeout=10):
+# ---------- REQUEST ----------
+def safe_get(url, params=None):
     try:
-        r = requests.get(url, timeout=timeout)
+        r = requests.get(url, params=params, timeout=10)
         if r.status_code == 200:
             return r.json()
     except:
         pass
     return None
 
-# ---------- FETCH (WITH FALLBACK) ----------
+# ---------- FETCH (FIXED) ----------
 def fetch_rates():
     crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
-        timeout=10
+        params={
+            "ids": "bitcoin,ethereum,the-open-network",
+            "vs_currencies": "usd"
+        }
     )
-
-    if crypto:
-        crypto = requests.get(
-            "https://api.coingecko.com/api/v3/simple/price",
-            params={
-                "ids": "bitcoin,ethereum,the-open-network",
-                "vs_currencies": "usd"
-            },
-            timeout=10
-        ).json()
 
     fx = safe_get("https://open.er-api.com/v6/latest/USD")
 
@@ -75,7 +68,7 @@ def fetch_rates():
     except:
         return None
 
-# ---------- LIVE UPDATE ----------
+# ---------- UPDATE LOOP ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -83,38 +76,41 @@ async def live_updater():
         data = fetch_rates()
 
         if data:
-            prev_cache = cache.copy() if cache else data.copy()
+            if cache:
+                prev_cache = cache.copy()
+            else:
+                prev_cache = data.copy()
+
             cache = data
 
         await asyncio.sleep(60)
 
-# ---------- % CHANGE ----------
-def percent_change(new, old):
+# ---------- FORMAT ----------
+def pct(new, old):
     if not old or old == 0:
         return 0
     return ((new - old) / old) * 100
 
-def format_line(name, value, old):
+def line(name, value, old):
     if not old:
         return f"{name}: ${value:,.2f}"
 
-    change = percent_change(value, old)
+    change = pct(value, old)
     arrow = "🟢" if change >= 0 else "🔴"
-
     return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
 
 # ---------- TEXT ----------
 def build_text():
     if not cache:
-        return "⏳ Loading market data..."
+        return "⏳ Loading market data... please wait"
 
     return (
         "📊 LIVE MARKET\n\n"
-        f"₿ {format_line('BTC', cache.get('btc', 0), prev_cache.get('btc', 0))}\n"
-        f"Ξ {format_line('ETH', cache.get('eth', 0), prev_cache.get('eth', 0))}\n"
-        f"💎 {format_line('TON', cache.get('ton', 0), prev_cache.get('ton', 0))}\n"
-        f"💵 USD → RUB: {cache.get('rub', 0):,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cache.get('cny', 0):,.2f} ¥\n\n"
+        f"₿ {line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
+        f"Ξ {line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
+        f"💎 {line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n"
+        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -143,14 +139,14 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POST ----------
+# ---------- CHANNEL ----------
 async def channel_poster():
-    last_sent = ""
+    last = None
 
     while True:
         text = build_text()
 
-        if text != last_sent and "Loading" not in text:
+        if text != last and "Loading" not in text:
             try:
                 await bot.send_message(
                     CHANNEL_ID,
@@ -158,7 +154,7 @@ async def channel_poster():
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
-                last_sent = text
+                last = text
             except:
                 pass
 
@@ -168,7 +164,7 @@ async def channel_poster():
 async def on_startup(_):
     global cache, prev_cache
 
-    # 🔥 initial load with retries
+    # initial load
     for _ in range(5):
         data = fetch_rates()
         if data:
