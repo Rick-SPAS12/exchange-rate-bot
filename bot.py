@@ -50,12 +50,10 @@ def fetch_rates():
     ).json()
 
     fx = requests.get(
-        "https://open.er-api.com/v6/latest/USD",
+        "https://api.exchangerate.host/latest",
+        params={"base": "USD"},
         timeout=10
     ).json()
-
-    if fx.get("result") != "success":
-        return None
 
     rates = fx.get("rates", {})
 
