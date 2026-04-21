@@ -11,15 +11,19 @@ if not API_TOKEN:
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
+# ---------- КНОПКИ ----------
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🔄 Update")
 
+# ---------- ПОЛУЧЕНИЕ КУРСОВ ----------
 def get_rates():
     crypto = requests.get(
         "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd"
     ).json()
 
-    fx = requests.get("https://api.exchangerate-api.com/v4/latest/USD").json()["rates"]
+    fx = requests.get(
+        "https://api.exchangerate-api.com/v4/latest/USD"
+    ).json()["rates"]
 
     return (
         crypto["bitcoin"]["usd"],
@@ -29,23 +33,42 @@ def get_rates():
         fx["CNY"],
     )
 
+# ---------- ФУНКЦИЯ ВЫВОДА ----------
+async def send_rates(message: types.Message):
+    btc, eth, ton, rub, cny = get_rates()
+
+    await message.answer(
+        "📊 Rates:\n\n"
+        f"₿ BTC: ${btc:,.2f}\n"
+        f"Ξ ETH: ${eth:,.2f}\n"
+        f"💎 TON: ${ton:,.2f}\n"
+        f"💵 USD → RUB: {rub:,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">CryptoBot</a>',
+        parse_mode="HTML"
+    )
+
+# ---------- /start ----------
+@dp.message_handler(commands=["start"])
+async def start(message: types.Message):
+    await message.answer("Choose action:", reply_markup=keyboard)
+
+# ---------- 📊 ----------
+@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
+async def rates(message: types.Message):
+    try:
+        await send_rates(message)
+    except:
+        await message.answer("Error loading rates")
+
+# ---------- 🔄 ----------
 @dp.message_handler(lambda m: m.text == "🔄 Update")
 async def update_rates(message: types.Message):
     try:
-        btc, eth, ton, rub, cny = get_rates()
-
-        await message.answer(
-            "📊 Rates:\n\n"
-            f"₿ BTC: ${btc:,.2f}\n"
-            f"Ξ ETH: ${eth:,.2f}\n"
-            f"💎 TON: ${ton:,.2f}\n"
-            f"💵 USD → RUB: {rub:,.2f} ₽\n"
-            f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
-            '📌 <a href="https://t.me/send?start=r-x4zoa">CryptoBot</a>',
-            parse_mode="HTML"
-        )
-
+        await send_rates(message)
     except:
         await message.answer("Error updating rates")
+
+# ---------- ЗАПУСК ----------
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
