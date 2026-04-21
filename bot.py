@@ -136,7 +136,8 @@ def format_line(name, value, old, suffix=""):
         icon = "🔴"
         sign = ""
 
-    return f"{name}: {value:.2f}{suffix} ({sign}{change:.2f}%) {icon}"
+    display_value = value / 1000
+return f"{name}: {display_value:.3f}{suffix} ({sign}{change:.2f}%) {icon}"
 
 # ---------- TEXT ----------
 def build_text():
