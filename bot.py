@@ -16,7 +16,16 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
 # ---------- CHANNEL ----------
-CHANNEL_ID = "@bi11ionaire"  # <-- твой канал
+CHANNEL_ID = "@bi11ionaire"
+
+# ---------- CACHE ----------
+cache = {
+    "btc": 0.0,
+    "eth": 0.0,
+    "ton": 0.0,
+    "rub": 0.0,
+    "cny": 0.0
+}
 
 # ---------- KEYBOARD ----------
 inline_kb = InlineKeyboardMarkup()
@@ -27,8 +36,8 @@ inline_kb.add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- API ----------
-def get_rates():
+# ---------- FETCH ----------
+def fetch_rates():
     crypto = requests.get(
         "https://api.coingecko.com/api/v3/simple/price",
         params={
@@ -38,36 +47,47 @@ def get_rates():
         timeout=10
     ).json()
 
-    fx_resp = requests.get(
+    fx = requests.get(
         "https://open.er-api.com/v6/latest/USD",
         timeout=10
     ).json()
 
-    # проверка статуса API
-    if fx_resp.get("result") != "success":
-        raise ValueError("FX API failed")
+    if fx.get("result") != "success":
+        return None
 
-    rates = fx_resp.get("rates", {})
+    rates = fx.get("rates", {})
 
-    return (
-        crypto["bitcoin"]["usd"],
-        crypto["ethereum"]["usd"],
-        crypto["the-open-network"]["usd"],
-        float(rates.get("RUB", 0)),
-        float(rates.get("CNY", 0)),
-    )
+    return {
+        "btc": crypto["bitcoin"]["usd"],
+        "eth": crypto["ethereum"]["usd"],
+        "ton": crypto["the-open-network"]["usd"],
+        "rub": float(rates.get("RUB", 0)),
+        "cny": float(rates.get("CNY", 0)),
+    }
+
+# ---------- CACHE UPDATER ----------
+async def cache_updater():
+    global cache
+
+    while True:
+        try:
+            data = fetch_rates()
+            if data:
+                cache = data
+        except:
+            pass
+
+        await asyncio.sleep(30)
 
 # ---------- TEXT ----------
 def build_text():
-    btc, eth, ton, rub, cny = get_rates()
-
     return (
-        "📊 Rates\n\n"
-        f"₿ BTC: ${btc:,.2f}\n"
-        f"Ξ ETH: ${eth:,.2f}\n"
-        f"💎 TON: ${ton:,.2f}\n"
-        f"💵 USD → RUB: {rub:,.2f} ₽\n"
-        f"🇨🇳 USD → CNY: {cny:,.2f} ¥\n\n"
+        "📊 Rates (LIVE)\n\n"
+        f"₿ BTC: ${cache['btc']:,.2f}\n"
+        f"Ξ ETH: ${cache['eth']:,.2f}\n"
+        f"💎 TON: ${cache['ton']:,.2f}\n"
+        f"💵 USD → RUB: {cache['rub']:,.2f} ₽\n"
+        f"🇨🇳 USD → CNY: {cache['cny']:,.2f} ¥\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -113,6 +133,7 @@ async def channel_poster():
 
 # ---------- STARTUP ----------
 async def on_startup(_):
+    asyncio.create_task(cache_updater())
     asyncio.create_task(channel_poster())
 
 # ---------- RUN ----------
