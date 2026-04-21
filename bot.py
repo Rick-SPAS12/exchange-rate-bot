@@ -38,17 +38,23 @@ def get_rates():
         timeout=10
     ).json()
 
-    fx = requests.get(
+    fx_resp = requests.get(
         "https://open.er-api.com/v6/latest/USD",
         timeout=10
-    ).json().get("rates", {})
+    ).json()
+
+    # проверка статуса API
+    if fx_resp.get("result") != "success":
+        raise ValueError("FX API failed")
+
+    rates = fx_resp.get("rates", {})
 
     return (
         crypto["bitcoin"]["usd"],
         crypto["ethereum"]["usd"],
         crypto["the-open-network"]["usd"],
-        fx.get("RUB", 0),
-        fx.get("CNY", 0),
+        float(rates.get("RUB", 0)),
+        float(rates.get("CNY", 0)),
     )
 
 # ---------- TEXT ----------
