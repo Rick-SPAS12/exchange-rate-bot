@@ -128,7 +128,7 @@ def line(name, value, old):
         return f"{name}: ${value:,.2f}"
 
     change = pct(value, old)
-    arrow = "📈" if change >= 0 else "📉"
+    arrow = "🟢" if change >= 0 else "🔴"
     return f"{name}: ${value:,.2f} ({change:+.2f}%) {arrow}"
 
 # ---------- TEXT ----------
