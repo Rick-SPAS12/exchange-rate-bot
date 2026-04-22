@@ -153,18 +153,17 @@ def build_text():
     if not cache:
         return "📊 Loading..."
 
-    p = prev_cache or cache
+    prev = prev_cache or cache
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
-        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
-        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
+        f"{line('₿','BTC',cache['btc'],prev.get('btc'))}\n"
+        f"{line('Ξ','ETH',cache['eth'],prev.get('eth'))}\n"
+        f"{line('▽','TON',cache['ton'],prev.get('ton'))}\n\n"
         f"{line('','USD→RUB',cache['rub'],prev.get('rub'))} ₽\n"
         f"{line('','USD→CNY',cache['cny'],prev.get('cny'))} ¥\n\n"
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
-
 # ---------- TOP TEXT ----------
 def build_top():
     movers = get_top_movers()
