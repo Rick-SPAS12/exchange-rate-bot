@@ -225,13 +225,18 @@ async def top_poster():
     global last_top_post
     while True:
         text = build_top()
+
         if text != last_top_post:
-            await bot.send_message(
-                CHANNEL_ID,
-                text,
-                disable_web_page_preview=True
-            )
-            last_top_post = text
+            try:
+                await bot.send_animation(
+                    CHANNEL_ID,
+                    animation="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
+                    caption=text
+                )
+                last_top_post = text
+            except Exception as e:
+                logging.error(f"Failed to send TOP post: {e}")
+
         await asyncio.sleep(TOP_POST_INTERVAL)
 
 
