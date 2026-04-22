@@ -7,30 +7,20 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from aiogram import F
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
 
 API_TOKEN = os.getenv("API_TOKEN")
 if not API_TOKEN:
     raise ValueError("API_TOKEN not set")
 
-# Render автоматически дает PORT
 PORT = int(os.getenv("PORT", 8080))
 
-# WEBHOOK_URL - адрес вашего приложения на Render
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-if not WEBHOOK_URL:
-    raise ValueError("WEBHOOK_URL not set! Add it in Render Environment Variables")
-
 CHANNEL_ID = "@bi11ionaire"
-
 UPDATE_INTERVAL = 300
 TOP_INTERVAL = 3600
 
 GIF_ID = "CgACAgIAAxkBAAFHyylp6HoVLUhyJVLqLnUlAAFxqwtWOR8AAu6aAAK6jXlK_gAB02c6HCOGOwQ"
 
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -60,7 +50,6 @@ def safe_get(url, params=None):
         pass
     return None
 
-
 def get_p2p_price(fiat):
     try:
         r = requests.post(
@@ -79,7 +68,6 @@ def get_p2p_price(fiat):
     except:
         return None
 
-
 def fetch_rates():
     data = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -94,7 +82,6 @@ def fetch_rates():
         "rub": get_p2p_price("RUB") or cache.get("rub", 90),
         "cny": get_p2p_price("CNY") or cache.get("cny", 7.2),
     }
-
 
 def get_top():
     data = safe_get(
@@ -118,12 +105,10 @@ def get_top():
     movers.sort(key=lambda x: abs(x[1]), reverse=True)
     return movers[:5]
 
-
 def pct(new, old):
     if not old:
         return 0
     return ((new - old) / old) * 100
-
 
 def line(sym, name, value, old, suffix=""):
     if not old:
@@ -134,7 +119,6 @@ def line(sym, name, value, old, suffix=""):
     elif ch < 0:
         return f"{sym} {name}: {value:.2f}{suffix} ({ch:.2f}%) 🔴"
     return f"{sym} {name}: {value:.2f}{suffix}"
-
 
 def build_market():
     if not cache:
@@ -150,7 +134,6 @@ def build_market():
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
-
 def build_top():
     movers = get_top()
     if not movers:
@@ -161,7 +144,6 @@ def build_top():
         icon = "🟢" if ch > 0 else "🔴"
         text += f"{s} {sign}{ch:.2f}% {icon}\n"
     return text
-
 
 async def updater():
     global cache, prev_cache
@@ -176,24 +158,20 @@ async def updater():
             logging.error(f"Updater error: {e}")
         await asyncio.sleep(UPDATE_INTERVAL)
 
-
 async def top_post():
     while True:
         try:
             await bot.send_animation(CHANNEL_ID, animation=GIF_ID, caption=build_top())
-        except Exception as e:
-            logging.error(f"Send animation error: {e}")
+        except:
             try:
                 await bot.send_message(CHANNEL_ID, build_top())
             except:
                 pass
         await asyncio.sleep(TOP_INTERVAL)
 
-
 @dp.message(Command("start"))
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
-
 
 @dp.message(F.text == "📊 Exchange rates")
 async def rates(m: types.Message):
@@ -204,14 +182,12 @@ async def rates(m: types.Message):
         disable_web_page_preview=True
     )
 
-
 @dp.message(F.text == "🚀 TOP")
 async def top(m: types.Message):
     try:
         await m.answer_animation(GIF_ID, caption=build_top())
     except:
         await m.answer(build_top())
-
 
 @dp.callback_query(F.data == "update")
 async def update(c: types.CallbackQuery):
@@ -223,61 +199,24 @@ async def update(c: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-
-async def on_startup():
-    """Действия при запуске"""
-    # Устанавливаем вебхук
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    await bot.set_webhook(webhook_url)
-    logging.info(f"Webhook set to {webhook_url}")
-    
-    # Запускаем фоновые задачи
-    asyncio.create_task(updater())
-    asyncio.create_task(top_post())
-
-
-async def on_shutdown():
-    """Действия при остановке"""
-    await bot.delete_webhook()
-    await bot.session.close()
-
+from aiohttp import web
 
 async def health_check(request):
-    """Эндпоинт для проверки здоровья (нужен для Render)"""
-    return web.Response(text="OK", status=200)
-
+    return web.Response(text="OK")
 
 async def main():
-    # Создаем веб-приложение
+    asyncio.create_task(updater())
+    asyncio.create_task(top_post())
+    
     app = web.Application()
-    
-    # Добавляем health check
     app.router.add_get("/", health_check)
-    app.router.add_get("/health", health_check)
-    
-    # Настраиваем вебхук
-    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_handler.register(app, path="/webhook")
-    setup_application(app, dp, bot=bot)
-    
-    # Действия при запуске
-    await on_startup()
-    
-    # Запускаем веб-сервер
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     
-    logging.info(f"Bot started on port {PORT}")
-    logging.info(f"Webhook URL: {WEBHOOK_URL}/webhook")
-    
-    # Держим приложение запущенным
-    try:
-        await asyncio.Event().wait()
-    except:
-        await on_shutdown()
-
+    print(f"Bot running on port {PORT}")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
