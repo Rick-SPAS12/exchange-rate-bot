@@ -19,6 +19,8 @@ UPDATE_INTERVAL = 300
 MARKET_POST_INTERVAL = 300
 TOP_POST_INTERVAL = 3600
 
+GIF_ID = "CgACAgIAAxkBAAFHyylp6HoVLUhyJVLqLnUlAAFxqwtWOR8AAu6aAAK6jXlK_gAB02c6HCOGOwQ"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
@@ -42,9 +44,9 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
-# ==================== SAFE REQUEST ====================
+# ==================== REQUEST ====================
 def safe_get(url, params=None, retries=3):
-    for i in range(retries):
+    for _ in range(retries):
         try:
             r = requests.get(url, params=params, timeout=10)
             if r.status_code == 200:
@@ -73,7 +75,6 @@ def get_p2p_price(fiat):
             return float(r["data"][0]["adv"]["price"])
     except:
         pass
-
     return None
 
 
@@ -132,6 +133,7 @@ def get_top_movers():
         return []
 
 
+# ==================== FORMAT ====================
 def pct(new, old):
     if not old:
         return 0
@@ -222,27 +224,23 @@ async def market_poster():
         await asyncio.sleep(MARKET_POST_INTERVAL)
 
 
-# ==================== TOP (СТАБИЛЬНО С GIF) ====================
 async def top_poster():
     global last_top_post, top_cache
-
-    GIF_FILE_ID = "AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA"
-
     while True:
         text = build_top()
         top_cache = text
 
         if text != last_top_post:
             try:
-                await bot.send_document(
+                await bot.send_animation(
                     CHANNEL_ID,
-                    document=GIF_FILE_ID,
+                    animation=GIF_ID,
                     caption=text,
                     parse_mode="HTML"
                 )
                 last_top_post = text
             except Exception as e:
-                logging.error(f"TOP send error: {e}")
+                logging.error(f"TOP error: {e}")
 
         await asyncio.sleep(TOP_POST_INTERVAL)
 
@@ -274,16 +272,11 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    text = top_cache or "🚀 Loading..."
-
-    try:
-        await m.answer_document(
-            document="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
-            caption=text,
-            parse_mode="HTML"
-        )
-    except:
-        await m.answer(text)
+    await m.answer_animation(
+        animation=GIF_ID,
+        caption=build_top(),
+        parse_mode="HTML"
+    )
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
