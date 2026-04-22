@@ -222,20 +222,22 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
+# ✅ ИСПРАВЛЕНА ТОЛЬКО ЭТА КНОПКА
+@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
-    build_text(),
-    parse_mode="HTML",
-    disable_web_page_preview=True,
-    reply_markup=inline_kb
-)
+        build_text(),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=inline_kb
+    )
+
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
     await m.answer(
-    build_top(),
-    disable_web_page_preview=True
-)
+        build_top(),
+        disable_web_page_preview=True
+    )
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
