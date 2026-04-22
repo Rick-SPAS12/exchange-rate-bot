@@ -1,39 +1,35 @@
 import os
 import asyncio
 import requests
-import logging
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
-# ================= CONFIG =================
-API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_ID = "@bi11ionaire"
-
-UPDATE_INTERVAL = 300
-TOP_INTERVAL = 3600
-
-GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOwQ"
-
-logging.basicConfig(level=logging.INFO)
+# ---------- TOKEN ----------
+API_TOKEN = os.getenv("API_TOKEN") or "PASTE_YOUR_TOKEN_HERE"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ================= CACHE =================
+# ---------- CHANNEL ----------
+CHANNEL_ID = "@bi11ionaire"
+
+# ---------- CACHE ----------
 cache = {}
 prev_cache = {}
+last_market_post = ""
+last_top_post = ""
 
-# ================= UI =================
-keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add("📊 Exchange rates", "🚀 TOP MOVERS")
-
+# ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
-# ================= REQUESTS =================
+keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+keyboard.add("📊 Exchange rates", "🚀 TOP")
+
+# ---------- SAFE REQUEST ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -43,7 +39,7 @@ def safe_get(url, params=None):
         pass
     return None
 
-
+# ---------- P2P ----------
 def get_p2p_price(fiat):
     try:
         r = requests.post(
@@ -58,201 +54,218 @@ def get_p2p_price(fiat):
             timeout=10
         ).json()
 
-        return float(r["data"][0]["adv"]["price"])
+        if isinstance(r, dict) and r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
     except:
-        return None
+        pass
+    return None
 
-
-# ================= DATA =================
+# ---------- MARKET ----------
 def fetch_rates():
-    data = safe_get(
+    crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
-        {"ids": "bitcoin,ethereum,the-open-network", "vs_currencies": "usd"}
+        params={
+            "ids": "bitcoin,ethereum,the-open-network",
+            "vs_currencies": "usd"
+        }
     )
 
-    if not data:
+    if not crypto:
         return None
 
     return {
-        "btc": float(data["bitcoin"]["usd"]),
-        "eth": float(data["ethereum"]["usd"]),
-        "ton": float(data["the-open-network"]["usd"]),
+        "btc": float(crypto["bitcoin"]["usd"]),
+        "eth": float(crypto["ethereum"]["usd"]),
+        "ton": float(crypto["the-open-network"]["usd"]),
         "rub": get_p2p_price("RUB") or cache.get("rub", 90),
         "cny": get_p2p_price("CNY") or cache.get("cny", 7.2),
     }
 
+# ---------- TOP MOVERS ----------
+def get_top_movers():
+    try:
+        r = safe_get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": 50,
+                "page": 1,
+                "price_change_percentage": "1h"
+            }
+        )
 
-def get_top():
-    data = safe_get(
-        "https://api.coingecko.com/api/v3/coins/markets",
-        {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 50,
-            "page": 1,
-            "price_change_percentage": "1h"
-        }
-    )
+        if not isinstance(r, list):
+            return []
 
-    if not data:
+        movers = []
+
+        for c in r:
+            ch = c.get("price_change_percentage_1h_in_currency")
+            if ch is None:
+                continue
+
+            movers.append({
+                "symbol": c.get("symbol", "").upper(),
+                "change": float(ch)
+            })
+
+        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
+        return movers[:5]
+
+    except:
         return []
 
-    movers = []
-    for c in data:
-        ch = c.get("price_change_percentage_1h_in_currency")
-        if ch is None:
-            continue
-        movers.append((c["symbol"].upper(), float(ch)))
-
-    movers.sort(key=lambda x: abs(x[1]), reverse=True)
-    return movers[:5]
-
-
-# ================= FORMAT =================
+# ---------- FORMAT ----------
 def pct(new, old):
     if not old:
         return 0
     return ((new - old) / old) * 100
 
 
-def line(sym, name, value, old, suffix=""):
+def format_price(name, value):
+    # BTC / ETH с разделителями тысяч
+    if name in ["BTC", "ETH"]:
+        # 77,526 -> если хочешь 77.526 замени "," на "."
+        return f"{value:,.0f}"
+    return f"{value:.2f}"
+
+
+def line(sym, name, value, old):
+    price = format_price(name, value)
+
+    # если нет старого значения
     if not old:
-        return f"{sym} {name}: {value:.2f}{suffix}"
+        return f"{sym} {name}: {price}"
 
     ch = pct(value, old)
 
+    # ВСЕГДА показываем процент если было движение
     if ch > 0:
-        return f"{sym} {name}: {value:.2f}{suffix} (+{ch:.2f}%) 🟢"
+        return f"{sym} {name}: {price} (+{ch:.2f}%) 🟢"
     elif ch < 0:
-        return f"{sym} {name}: {value:.2f}{suffix} ({ch:.2f}%) 🔴"
+        return f"{sym} {name}: {price} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}{suffix}"
+    return f"{sym} {name}: {price}"
 
-
-# ================= TEXT =================
-def build_market():
+# ---------- LIVE TEXT ----------
+def build_text():
     if not cache:
-        return "📊 Loading market data..."
+        return "📊 Loading..."
 
-    prev = prev_cache or cache
+    p = prev_cache or cache
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿','BTC',cache['btc'],prev.get('btc'))}\n"
-        f"{line('Ξ','ETH',cache['eth'],prev.get('eth'))}\n"
-        f"{line('▽','TON',cache['ton'],prev.get('ton'))}\n\n"
-        f"{line('','USD→RUB',cache['rub'],prev.get('rub'))} ₽\n"
-        f"{line('','USD→CNY',cache['cny'],prev.get('cny'))} ¥\n\n"
+        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
+        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
+        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
+        f"{line('₽','USD→RUB',cache['rub'],p.get('rub', cache['rub']))}\n"
+        f"{line('¥','USD→CNY',cache['cny'],p.get('cny', cache['cny']))}\n\n"
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
-
+# ---------- TOP TEXT ----------
 def build_top():
-    movers = get_top()
+    movers = get_top_movers()
 
     if not movers:
-        return "<b>🚀 TOP MOVERS (1h)</b>\n\n⚠️ Data temporarily unavailable"
+        return "🚀 TOP MOVERS\n\nНет данных"
 
-    text = "<b>🚀 TOP MOVERS (1h)</b>\n\n"
+    text = "🚀 TOP MOVERS (1h)\n\n"
 
-    for s, ch in movers:
-        sign = "+" if ch > 0 else ""
+    for m in movers:
+        ch = m["change"]
         icon = "🟢" if ch > 0 else "🔴"
-        text += f"{s} {sign}{ch:.2f}% {icon}\n"
+        sign = "+" if ch > 0 else ""
+        text += f"{m['symbol']} {sign}{ch:.2f}% {icon}\n"
 
+    text += "\n📌 @bi11ionaire"
     return text
 
-
-# ================= TASKS =================
+# ---------- LOOP ----------
 async def updater():
     global cache, prev_cache
 
     while True:
         data = fetch_rates()
         if data:
-            if cache:
-                prev_cache = cache.copy()
+            prev_cache = cache.copy() if cache else data
             cache = data
 
-        await asyncio.sleep(UPDATE_INTERVAL)
+        await asyncio.sleep(300)
 
+async def market_poster():
+    global last_market_post
 
-async def market_post():
     while True:
-        try:
+        if cache:
+            text = build_text()
+
+            if text != last_market_post:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                last_market_post = text
+
+        await asyncio.sleep(300)
+
+async def top_poster():
+    global last_top_post
+
+    while True:
+        text = build_top()
+
+        if text != last_top_post:
             await bot.send_message(
                 CHANNEL_ID,
-                build_market(),
-                parse_mode="HTML",
+                text,
                 disable_web_page_preview=True
             )
-        except Exception as e:
-            logging.error(f"Market post error: {e}")
+            last_top_post = text
 
-        await asyncio.sleep(UPDATE_INTERVAL)
+        await asyncio.sleep(3600)
 
-
-async def top_post():
-    while True:
-        try:
-            await bot.send_animation(
-                CHANNEL_ID,
-                GIF_ID,
-                caption=build_top(),
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logging.error(f"TOP post error: {e}")
-
-        await asyncio.sleep(TOP_INTERVAL)
-
-
-# ================= HANDLERS =================
+# ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-
-@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
+@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
-        build_market(),
+        build_text(),
         parse_mode="HTML",
-        reply_markup=inline_kb,
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
+        reply_markup=inline_kb
     )
 
-
-@dp.message_handler(lambda m: m.text == "🚀 TOP MOVERS")
+@dp.message_handler(lambda m: m.text and "TOP" in m.text)
 async def top(m: types.Message):
-    try:
-        await m.answer_animation(
-            GIF_ID,
-            caption=build_top(),
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logging.error(f"TOP button error: {e}")
-        await m.answer(build_top())
-
+    await m.answer(
+        build_top(),
+        disable_web_page_preview=True
+    )
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
     await c.answer()
     await c.message.edit_text(
-        build_market(),
+        build_text(),
         parse_mode="HTML",
         reply_markup=inline_kb,
         disable_web_page_preview=True
     )
 
-
-# ================= START =================
+# ---------- START ----------
 async def on_startup(_):
     asyncio.create_task(updater())
-    asyncio.create_task(market_post())
-    asyncio.create_task(top_post())
+    asyncio.create_task(market_poster())
+    asyncio.create_task(top_poster())
 
-
+# ---------- RUN ----------
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
