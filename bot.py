@@ -109,18 +109,22 @@ def pct(new, old):
     return ((new - old) / old) * 100
 
 def line(sym, name, value, old, suffix=""):
+    if name in ["BTC", "ETH"]:
+        price = f"{value:,.0f}"
+    else:
+        price = f"{value:.2f}"
+
     if not old:
-        return f"{sym} {name}: {value:.2f}{suffix}"
+        return f"{sym} {name}: {price}{suffix}"
 
     ch = pct(value, old)
 
     if value > old:
-        return f"{sym} {name}: {value:.2f}{suffix} (+{ch:.2f}%) 🟢"
+        return f"{sym} {name}: {price}{suffix} (+{ch:.2f}%) 🟢"
     elif value < old:
-        return f"{sym} {name}: {value:.2f}{suffix} ({ch:.2f}%) 🔴"
+        return f"{sym} {name}: {price}{suffix} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}{suffix}"
-
+    return f"{sym} {name}: {price}{suffix}"
 # ---------- TEXT ----------
 def build_text():
     if not cache:
