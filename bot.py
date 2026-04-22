@@ -222,15 +222,14 @@ def build_text():
     p = prev_cache or cache
 
     return (
-        "<b>📊 LIVE MARKET</b>\n\n"
-        f"{format_line('₿','BTC', cache['btc'], p.get('btc'))}\n"
-        f"{format_line('Ξ','ETH', cache['eth'], p.get('eth'))}\n"
-        f"{format_line('▽','TON', cache['ton'], p.get('ton'))}\n\n"
-        f"{format_line('💵','USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
-        f"{format_line('🇨🇳','USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
-    )
-
+    "<b>📊 LIVE MARKET</b>\n\n"
+    f"{format_line('₿', 'BTC', cache['btc'], p.get('btc'))}\n"
+    f"{format_line('Ξ', 'ETH', cache['eth'], p.get('eth'))}\n"
+    f"{format_line('▽', 'TON', cache['ton'], p.get('ton'))}\n\n"
+    f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
+    f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
+    '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+)
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
