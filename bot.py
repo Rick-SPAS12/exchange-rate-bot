@@ -233,7 +233,9 @@ async def update(c: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-
+@dp.message_handler(content_types=types.ContentType.ANIMATION)
+async def get_gif_id(m: types.Message):
+    print(m.animation.file_id)
 # ==================== START ====================
 async def on_startup(_):
     asyncio.create_task(updater())
