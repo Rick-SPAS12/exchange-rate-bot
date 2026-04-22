@@ -155,9 +155,11 @@ def pct(new, old):
 
 def format_price(name, value):
     if name in ["BTC", "ETH"]:
-        return f"{value:,.0f}".replace(",", ".")
-    return f"{value:.2f}"
-
+        # С запятой после тысяч, без десятичных знаков
+        return f"{value:,.0f}"
+    else:
+        # TON, USD→RUB, USD→CNY - с точкой
+        return f"{value:.2f}".replace(",", ".")
 
 def line(sym, name, value, old, suffix=""):
     price = format_price(name, value)
