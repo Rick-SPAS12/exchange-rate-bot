@@ -32,6 +32,7 @@ cache = {}
 prev_cache = {}
 last_market_post = ""
 last_top_post = ""
+top_cache = ""
 
 # ==================== КЛАВИАТУРЫ ====================
 inline_kb = InlineKeyboardMarkup().add(
@@ -221,21 +222,27 @@ async def market_poster():
         await asyncio.sleep(MARKET_POST_INTERVAL)
 
 
+# ==================== TOP (СТАБИЛЬНО С GIF) ====================
 async def top_poster():
-    global last_top_post
+    global last_top_post, top_cache
+
+    GIF_FILE_ID = "AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA"
+
     while True:
         text = build_top()
+        top_cache = text
 
         if text != last_top_post:
             try:
-                await bot.send_animation(
+                await bot.send_document(
                     CHANNEL_ID,
-                    animation="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
-                    caption=text
+                    document=GIF_FILE_ID,
+                    caption=text,
+                    parse_mode="HTML"
                 )
                 last_top_post = text
             except Exception as e:
-                logging.error(f"Failed to send TOP post: {e}")
+                logging.error(f"TOP send error: {e}")
 
         await asyncio.sleep(TOP_POST_INTERVAL)
 
@@ -267,17 +274,16 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
+    text = top_cache or "🚀 Loading..."
+
     try:
-        await m.answer_animation(
-            animation="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
-            caption=build_top(),
-            disable_web_page_preview=True
+        await m.answer_document(
+            document="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
+            caption=text,
+            parse_mode="HTML"
         )
     except:
-        await m.answer(
-            build_top(),
-            disable_web_page_preview=True
-        )
+        await m.answer(text)
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
