@@ -1,14 +1,12 @@
 import os
 import asyncio
 import requests
-import time
 import logging
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
-# ==================== CONFIG ====================
 API_TOKEN = os.getenv("API_TOKEN")
 if not API_TOKEN:
     raise ValueError("API_TOKEN not set")
@@ -25,11 +23,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ==================== CACHE ====================
 cache = {}
 prev_cache = {}
 
-# ==================== UI ====================
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
@@ -37,7 +33,6 @@ inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
-# ==================== REQUESTS ====================
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=7)
@@ -67,7 +62,6 @@ def get_p2p_price(fiat):
         return None
 
 
-# ==================== DATA ====================
 def fetch_rates():
     data = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -106,14 +100,12 @@ def get_top():
         ch = c.get("price_change_percentage_1h_in_currency")
         if ch is None:
             continue
-
         movers.append((c["symbol"].upper(), float(ch)))
 
     movers.sort(key=lambda x: abs(x[1]), reverse=True)
     return movers[:5]
 
 
-# ==================== FORMAT ====================
 def pct(new, old):
     if not old:
         return 0
@@ -134,7 +126,6 @@ def line(sym, name, value, old, suffix=""):
     return f"{sym} {name}: {value:.2f}{suffix}"
 
 
-# ==================== TEXT ====================
 def build_market():
     if not cache:
         return "📊 Loading..."
@@ -167,42 +158,31 @@ def build_top():
     return text
 
 
-# ==================== TASKS ====================
 async def updater():
     global cache, prev_cache
-
     while True:
         data = fetch_rates()
         if data:
             if cache:
                 prev_cache = cache.copy()
             cache = data
-
         await asyncio.sleep(UPDATE_INTERVAL)
 
 
 async def top_post():
     while True:
         try:
-            text = build_top()
-
-            # SAFE GIF (не падает если битый)
-            try:
-                await bot.send_animation(
-                    CHANNEL_ID,
-                    animation=GIF_ID,
-                    caption=text
-                )
-            except:
-                await bot.send_message(CHANNEL_ID, text)
-
-        except Exception as e:
-            logging.error(e)
+            await bot.send_animation(
+                CHANNEL_ID,
+                animation=GIF_ID,
+                caption=build_top()
+            )
+        except:
+            await bot.send_message(CHANNEL_ID, build_top())
 
         await asyncio.sleep(TOP_INTERVAL)
 
 
-# ==================== HANDLERS ====================
 @dp.message_handler(commands=["start"])
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
@@ -220,12 +200,7 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    text = build_top()
-
-    try:
-        await m.answer_animation(GIF_ID, caption=text)
-    except:
-        await m.answer(text)
+    await m.answer_animation(GIF_ID, caption=build_top())
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
@@ -239,7 +214,6 @@ async def update(c: types.CallbackQuery):
     )
 
 
-# ==================== START ====================
 async def on_startup(_):
     asyncio.create_task(updater())
     asyncio.create_task(top_post())
