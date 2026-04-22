@@ -17,7 +17,7 @@ CHANNEL_ID = "@bi11ionaire"
 UPDATE_INTERVAL = 300
 TOP_INTERVAL = 3600
 
-GIF_ID = "CgACAgIAAxkBAAFHyylp6HoVLUhyJVLqLnUlAAFxqwtWOR8AAu6aAAK6jXlK_gAB02c6HCOGOwQ"
+GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOwQ"
 
 logging.basicConfig(level=logging.INFO)
 
