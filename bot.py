@@ -104,24 +104,20 @@ def get_top():
         return []
 
 # ---------- FORMAT ----------
-def pct(new, old):
-    if not old:
-        return 0
-    return ((new - old) / old) * 100
-
 def line(sym, name, value, old, suffix=""):
+    price = format_price(name, value)
+
     if not old:
-        return f"{sym} {name}: {value:.2f}{suffix}"
+        return f"{sym} {name}: {price}{suffix}"
 
     ch = pct(value, old)
 
     if value > old:
-        return f"{sym} {name}: {value:.2f}{suffix} (+{ch:.2f}%) 🟢"
+        return f"{sym} {name}: {price}{suffix} (+{ch:.2f}%) 🟢"
     elif value < old:
-        return f"{sym} {name}: {value:.2f}{suffix} ({ch:.2f}%) 🔴"
+        return f"{sym} {name}: {price}{suffix} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}{suffix}"
-
+    return f"{sym} {name}: {price}{suffix}"
 # ---------- TEXT ----------
 def build_text():
     if not cache:
