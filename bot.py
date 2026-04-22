@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from aiogram.utils.exceptions import MessageNotModified
 
+# Настройка логов
 logging.basicConfig(level=logging.INFO)
 
 # ---------- CONFIG ----------
@@ -75,10 +76,12 @@ def get_pct(new, old):
     if not old or new == old: return 0
     return ((new - old) / old) * 100
 
-def format_line(name, val, old, suffix=""):
-    if val > 1000: price_fmt = f"{val:,.0f}"
-    elif val > 1: price_fmt = f"{val:.2f}"
-    else: price_fmt = f"{val:.4f}"
+def format_line(name, val, old, suffix="", is_high_value=False):
+    # Теперь для BTC и ETH (is_high_value) ставим запятую после тысячи
+    if is_high_value:
+        price_fmt = f"{val:,.2f}"
+    else:
+        price_fmt = f"{val:.2f}"
 
     change = get_pct(val, old)
     
@@ -92,18 +95,18 @@ def format_line(name, val, old, suffix=""):
 def build_market_text():
     return (
         "<b>LIVE MARKET</b>\n\n"
-        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'])}\n"
-        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'])}\n"
+        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'], is_high_value=True)}\n"
+        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'], is_high_value=True)}\n"
         f"▽ {format_line('TON', cache['ton'], prev_cache['ton'])}\n\n"
-        f" {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
-        f" {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>' # Ссылка возвращена
+        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
+        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=['start'])
 async def cmd_start(m: types.Message):
-    await m.answer("Бот запущен! Кнопки ниже 👇", reply_markup=main_kb)
+    await m.answer("Бот запущен!", reply_markup=main_kb)
 
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def btn_rates(m: types.Message):
@@ -129,17 +132,17 @@ async def market_loop():
 
 async def post_market_loop():
     while True:
+        await asyncio.sleep(300) # Цикл 5 минут
         if cache['btc'] > 0:
             try:
                 await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
                 logging.info("5-minute post sent.")
             except Exception as e:
                 logging.error(f"Post error: {e}")
-        await asyncio.sleep(300)
 
 async def post_top_loop():
     while True:
-        await asyncio.sleep(3600)
+        await asyncio.sleep(3600) # Цикл 1 час
         loop = asyncio.get_event_loop()
         txt = await loop.run_in_executor(None, fetch_top_movers)
         if txt and CHANNEL_ID:
@@ -153,6 +156,7 @@ async def on_startup(_):
     await loop.run_in_executor(None, fetch_market_data)
     await loop.run_in_executor(None, fetch_top_movers)
     
+    # Мгновенный первый пост при запуске
     try:
         await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
     except: pass
