@@ -211,7 +211,8 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
+# 🔥 НЕУБИВАЕМАЯ КНОПКА
+@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
         build_text(),
@@ -220,20 +221,11 @@ async def rates(m: types.Message):
         disable_web_page_preview=True
     )
 
-@dp.message_handler(lambda m: m.text and "🚀TOP" in m.text)
+# 🔥 ТОЖЕ НЕУБИВАЕМАЯ
+@dp.message_handler(lambda m: m.text and "TOP" in m.text)
 async def top(m: types.Message):
     await m.answer(
         build_top(),
-        disable_web_page_preview=True
-    )
-
-@dp.callback_query_handler(lambda c: c.data == "update")
-async def update(c: types.CallbackQuery):
-    await c.answer()
-    await c.message.edit_text(
-        build_text(),
-        parse_mode="HTML",
-        reply_markup=inline_kb,
         disable_web_page_preview=True
     )
 
