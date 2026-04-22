@@ -211,7 +211,12 @@ async def market_poster():
         if cache:
             text = build_text()
             if text != last_market_post:
-                await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
                 last_market_post = text
         await asyncio.sleep(MARKET_POST_INTERVAL)
 
@@ -221,7 +226,11 @@ async def top_poster():
     while True:
         text = build_top()
         if text != last_top_post:
-            await bot.send_message(CHANNEL_ID, text)
+            await bot.send_message(
+                CHANNEL_ID,
+                text,
+                disable_web_page_preview=True
+            )
             last_top_post = text
         await asyncio.sleep(TOP_POST_INTERVAL)
 
@@ -243,18 +252,31 @@ async def start(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
-    await m.answer(build_text(), parse_mode="HTML", reply_markup=inline_kb)
+    await m.answer(
+        build_text(),
+        parse_mode="HTML",
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
+    )
 
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer(build_top())
+    await m.answer(
+        build_top(),
+        disable_web_page_preview=True
+    )
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
     await c.answer()
-    await c.message.edit_text(build_text(), parse_mode="HTML", reply_markup=inline_kb)
+    await c.message.edit_text(
+        build_text(),
+        parse_mode="HTML",
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
+    )
 
 
 # ==================== START ====================
