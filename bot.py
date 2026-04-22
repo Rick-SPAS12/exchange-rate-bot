@@ -100,11 +100,6 @@ def fetch_rates():
         cny_price = get_p2p_price("CNY")
         
         # Использование кэша если P2P не ответил
-        async def get_cached_values():
-            async with cache_lock:
-                return cache.get("rub", 90), cache.get("cny", 7.2)
-        
-        # Для синхронной функции используем простое обращение
         cached_rub = 90
         cached_cny = 7.2
         if cache:
@@ -213,13 +208,14 @@ def build_text():
     )
 
 def build_top():
-    """Формирование текста с топ-5 монет"""
+    """Формирование текста с топ-5 монет (с жирным шрифтом)"""
     data = get_top()
 
     if not data:
-        return "🚀 TOP MOVERS\n\nНет данных для отображения"
+        return "<b>🚀 TOP MOVERS</b>\n\nНет данных для отображения"
 
-    text = "🚀 TOP MOVERS (1h)\n\n"
+    # Жирный шрифт с помощью HTML тега <b>
+    text = "<b>🚀 TOP MOVERS (1h)</b>\n\n"
 
     for sym, change in data:
         icon = "🟢" if change > 0 else "🔴"
@@ -288,6 +284,7 @@ async def top_poster():
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
+                    parse_mode="HTML",  # Включаем HTML парсинг для жирного шрифта
                     disable_web_page_preview=True
                 )
                 last_text = text
@@ -324,7 +321,7 @@ async def rates_command(message: types.Message):
 async def top_command(message: types.Message):
     """Обработчик кнопки TOP"""
     text = build_top()
-    await message.answer(text)
+    await message.answer(text, parse_mode="HTML")  # Включаем HTML парсинг для жирного шрифта
 
 @dp.callback_query_handler(lambda callback: callback.data == "update")
 async def update_callback(callback: types.CallbackQuery):
