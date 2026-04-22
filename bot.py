@@ -111,18 +111,6 @@ def get_top():
         return []
 
 # ---------- FORMAT ----------
-def pct(new, old):
-    if not old:
-        return 0
-    return ((new - old) / old) * 100
-
-def format_price(name, value):
-    if name in ["BTC", "ETH"]:
-        return f"{value:,.0f}"
-    elif name == "TON":
-        return f"{value:.2f}"
-    return f"{value:.2f}"
-
 def line(sym, name, value, old, suffix=""):
     price = format_price(name, value)
 
