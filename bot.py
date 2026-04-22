@@ -2,6 +2,7 @@ import os
 import asyncio
 import requests
 import logging
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -23,6 +24,14 @@ CHANNEL_ID = "@bi11ionaire"
 cache = {}
 prev_cache = {}
 cache_lock = asyncio.Lock()
+
+# ---------- ТОРГОВЫЕ ИНДИКАТОРЫ ----------
+price_history = {
+    "btc": [],
+    "eth": [],
+    "ton": []
+}
+history_lock = asyncio.Lock()
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -117,6 +126,98 @@ def fetch_rates():
         logger.error(f"Error fetching rates: {e}")
         return None
 
+# ---------- ТОРГОВЫЕ ИНДИКАТОРЫ ----------
+def calculate_rsi(prices, period=14):
+    """Расчет RSI (индекс относительной силы)"""
+    if len(prices) < period + 1:
+        return 50  # Нейтральное значение если данных мало
+    
+    gains = []
+    losses = []
+    
+    for i in range(1, len(prices)):
+        change = prices[i] - prices[i-1]
+        if change > 0:
+            gains.append(change)
+            losses.append(0)
+        else:
+            gains.append(0)
+            losses.append(abs(change))
+    
+    if len(gains) < period:
+        return 50
+    
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    
+    if avg_loss == 0:
+        return 100
+    
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi
+
+def calculate_ma(prices, period=7):
+    """Расчет скользящей средней"""
+    if len(prices) < period:
+        return prices[-1] if prices else 0
+    
+    return sum(prices[-period:]) / period
+
+def get_trading_signals(symbol, current_price):
+    """Получение торговых сигналов на основе индикаторов"""
+    global price_history
+    
+    signals = []
+    
+    # Добавляем текущую цену в историю
+    if symbol in price_history:
+        price_history[symbol].append(current_price)
+        # Храним последние 50 значений
+        if len(price_history[symbol]) > 50:
+            price_history[symbol] = price_history[symbol][-50:]
+    
+    if len(price_history[symbol]) < 14:
+        return signals  # Недостаточно данных
+    
+    # Расчет индикаторов
+    rsi = calculate_rsi(price_history[symbol])
+    ma7 = calculate_ma(price_history[symbol], 7)
+    ma25 = calculate_ma(price_history[symbol], 25)
+    prev_price = price_history[symbol][-2] if len(price_history[symbol]) > 1 else current_price
+    
+    # RSI сигналы
+    if rsi > 70:
+        signals.append("🔴 ПЕРЕКУПЛЕННОСТЬ (RSI > 70) - Возможна коррекция вниз")
+    elif rsi < 30:
+        signals.append("🟢 ПЕРЕПРОДАНОСТЬ (RSI < 30) - Возможен разворот вверх")
+    
+    # Сигналы по скользящим средним
+    if ma7 > ma25 and price_history[symbol][-2] <= ma25 and current_price > ma25:
+        signals.append("🟢 БЫЧИЙ СИГНАЛ - MA7 пересекла MA25 снизу вверх")
+    elif ma7 < ma25 and price_history[symbol][-2] >= ma25 and current_price < ma25:
+        signals.append("🔴 МЕДВЕЖИЙ СИГНАЛ - MA7 пересекла MA25 сверху вниз")
+    
+    # Моментные сигналы
+    price_change = ((current_price - prev_price) / prev_price) * 100
+    if price_change > 3:
+        signals.append(f"⚡ СИЛЬНЫЙ РОСТ +{price_change:.1f}% за период")
+    elif price_change < -3:
+        signals.append(f"⚠️ СИЛЬНОЕ ПАДЕНИЕ {price_change:.1f}% за период")
+    
+    # Трендовые сигналы
+    if len(price_history[symbol]) >= 5:
+        last_5 = price_history[symbol][-5:]
+        trend = "up" if last_5[-1] > last_5[0] else "down" if last_5[-1] < last_5[0] else "side"
+        
+        if trend == "up" and all(last_5[i] < last_5[i+1] for i in range(4)):
+            signals.append("📈 УСТОЙЧИВЫЙ ВОСХОДЯЩИЙ ТРЕНД")
+        elif trend == "down" and all(last_5[i] > last_5[i+1] for i in range(4)):
+            signals.append("📉 УСТОЙЧИВЫЙ НИСХОДЯЩИЙ ТРЕНД")
+    
+    return signals
+
 # ---------- TOP ----------
 def get_top():
     """Получение топ-5 монет по изменению за час"""
@@ -139,19 +240,16 @@ def get_top():
 
         movers = []
         for c in r:
-            # Исправленное имя поля
             ch = c.get("price_change_percentage_1h_in_currency")
             
-            # Если поле отсутствует, пробуем альтернативное
             if ch is None:
                 ch = c.get("price_change_percentage_1h", 0)
             
             if ch is not None:
                 symbol = c.get("symbol", "").upper()
-                if symbol:  # Пропускаем пустые символы
+                if symbol:
                     movers.append((symbol, float(ch)))
 
-        # Сортируем по абсолютному изменению
         movers.sort(key=lambda x: abs(x[1]), reverse=True)
         return movers[:5]
 
@@ -166,27 +264,37 @@ def pct(new_val, old_val):
         return 0
     return ((new_val - old_val) / old_val) * 100
 
+def format_price(price):
+    """Форматирование цены с разделителями"""
+    if price >= 1000:
+        return f"{price:,.0f}".replace(",", ".")
+    elif price >= 1:
+        return f"{price:,.2f}".replace(",", ".")
+    else:
+        return f"{price:.4f}"
+
 def line(sym, name, value, old_val, suffix=""):
     """Форматирование строки с ценой и изменением"""
     if value is None:
         return f"{sym} {name}: N/A"
 
     if not old_val:
-        return f"{sym} {name}: {value:.2f}{suffix}"
+        formatted_price = format_price(value)
+        return f"{sym} {name}: {formatted_price}{suffix}"
 
     change = pct(value, old_val)
-    change_abs = abs(change)
+    formatted_price = format_price(value)
 
     if change > 0:
-        return f"{sym} {name}: {value:.2f}{suffix} (+{change:.2f}%) 🟢"
+        return f"{sym} {name}: {formatted_price}{suffix} (+{change:.2f}%) 🟢"
     elif change < 0:
-        return f"{sym} {name}: {value:.2f}{suffix} ({change:.2f}%) 🔴"
+        return f"{sym} {name}: {formatted_price}{suffix} ({change:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}{suffix}"
+    return f"{sym} {name}: {formatted_price}{suffix}"
 
 # ---------- TEXT ----------
 def build_text():
-    """Формирование текста с рыночными данными"""
+    """Формирование текста с рыночными данными и индикаторами"""
     if not cache:
         return "📊 Loading..."
 
@@ -197,15 +305,42 @@ def build_text():
     prev_rub = prev_cache.get("rub") if prev_cache else None
     prev_cny = prev_cache.get("cny") if prev_cache else None
 
-    return (
-        "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿', 'BTC', cache.get('btc'), prev_btc)}\n"
-        f"{line('Ξ', 'ETH', cache.get('eth'), prev_eth)}\n"
-        f"{line('▽', 'TON', cache.get('ton'), prev_ton)}\n\n"
-        f"{line('', 'USD→RUB', cache.get('rub'), prev_rub, ' ₽')}\n"
-        f"{line('', 'USD→CNY', cache.get('cny'), prev_cny, ' ¥')}\n\n"
-        "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
-    )
+    text = "<b>📊 LIVE MARKET</b>\n\n"
+    text += f"{line('₿', 'BTC', cache.get('btc'), prev_btc)}\n"
+    text += f"{line('Ξ', 'ETH', cache.get('eth'), prev_eth)}\n"
+    text += f"{line('▽', 'TON', cache.get('ton'), prev_ton)}\n\n"
+    text += f"{line('', 'USD→RUB', cache.get('rub'), prev_rub, ' ₽')}\n"
+    text += f"{line('', 'USD→CNY', cache.get('cny'), prev_cny, ' ¥')}\n\n"
+    
+    # Добавляем торговые индикаторы для BTC и ETH
+    text += "<b>📊 ТОРГОВЫЕ ИНДИКАТОРЫ</b>\n\n"
+    
+    # BTC индикаторы
+    btc_signals = get_trading_signals("btc", cache.get('btc', 0))
+    if btc_signals:
+        text += "<b>₿ BTC Сигналы:</b>\n"
+        for signal in btc_signals[:2]:  # Показываем не более 2 сигналов
+            text += f"{signal}\n"
+        text += "\n"
+    
+    # ETH индикаторы
+    eth_signals = get_trading_signals("eth", cache.get('eth', 0))
+    if eth_signals:
+        text += "<b>Ξ ETH Сигналы:</b>\n"
+        for signal in eth_signals[:2]:  # Показываем не более 2 сигналов
+            text += f"{signal}\n"
+        text += "\n"
+    
+    # TON индикаторы (опционально)
+    ton_signals = get_trading_signals("ton", cache.get('ton', 0))
+    if ton_signals:
+        text += "<b>▽ TON Сигналы:</b>\n"
+        for signal in ton_signals[:1]:  # Показываем не более 1 сигнала
+            text += f"{signal}\n"
+        text += "\n"
+    
+    text += "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
+    return text
 
 def build_top():
     """Формирование текста с топ-5 монет (с жирным шрифтом)"""
@@ -214,7 +349,6 @@ def build_top():
     if not data:
         return "<b>🚀 TOP MOVERS</b>\n\nНет данных для отображения"
 
-    # Жирный шрифт с помощью HTML тега <b>
     text = "<b>🚀 TOP MOVERS (1h)</b>\n\n"
 
     for sym, change in data:
@@ -238,7 +372,7 @@ async def updater():
                 async with cache_lock:
                     prev_cache = cache.copy() if cache else data
                     cache = data
-                logger.info(f"Rates updated: BTC={data.get('btc')}, ETH={data.get('eth')}")
+                logger.info(f"Rates updated: BTC={data.get('btc'):,.0f}, ETH={data.get('eth'):,.0f}")
             else:
                 logger.warning("Failed to fetch rates, using cache")
         except Exception as e:
@@ -284,7 +418,7 @@ async def top_poster():
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
-                    parse_mode="HTML",  # Включаем HTML парсинг для жирного шрифта
+                    parse_mode="HTML",
                     disable_web_page_preview=True
                 )
                 last_text = text
@@ -321,7 +455,7 @@ async def rates_command(message: types.Message):
 async def top_command(message: types.Message):
     """Обработчик кнопки TOP"""
     text = build_top()
-    await message.answer(text, parse_mode="HTML")  # Включаем HTML парсинг для жирного шрифта
+    await message.answer(text, parse_mode="HTML")
 
 @dp.callback_query_handler(lambda callback: callback.data == "update")
 async def update_callback(callback: types.CallbackQuery):
