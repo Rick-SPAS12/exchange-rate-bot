@@ -183,10 +183,11 @@ async def market_poster():
 
             if text != last_market_post:
                 await bot.send_message(
-                    CHANNEL_ID,
-                    text,
-                    parse_mode="HTML"
-                )
+    CHANNEL_ID,
+    text,
+    parse_mode="HTML",
+    disable_web_page_preview=True
+)
                 last_market_post = text
 
         await asyncio.sleep(300)
