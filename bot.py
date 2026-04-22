@@ -150,8 +150,8 @@ def build_text():
         f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
         f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
         f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
-        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']))}\n"
-        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']))}\n\n"
+        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']), ' ₽')}\n"
+        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']), ' ¥')}\n\n"
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
