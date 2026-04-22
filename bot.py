@@ -17,7 +17,8 @@ GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOw
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-cache = {"btc": 0, "eth": 0, "ton": 0, "rub": 95.0, "cny": 13.0}
+# Кэш данных
+cache = {"btc": 0, "eth": 0, "ton": 0, "rub": 90.0, "cny": 7.0}
 prev_cache = cache.copy()
 top_movers_cache = "🔍 Данные загружаются..."
 
@@ -35,9 +36,11 @@ def fetch_market_data():
     try:
         res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd", timeout=10).json()
         def p2p(fiat):
-            r = requests.post("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", 
-                              json={"asset":"USDT","fiat":fiat,"page":1,"rows":1,"tradeType":"BUY"}, timeout=10).json()
-            return float(r["data"][0]["adv"]["price"]) if r.get("data") else None
+            try:
+                r = requests.post("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search", 
+                                  json={"asset":"USDT","fiat":fiat,"page":1,"rows":1,"tradeType":"BUY"}, timeout=10).json()
+                return float(r["data"][0]["adv"]["price"])
+            except: return None
 
         new_data = {
             "btc": float(res["bitcoin"]["usd"]),
@@ -49,7 +52,7 @@ def fetch_market_data():
         prev_cache = cache.copy()
         cache = new_data
     except Exception as e:
-        logging.error(f"Error fetching: {e}")
+        logging.error(f"Error fetching data: {e}")
 
 def fetch_top_movers():
     global top_movers_cache
@@ -69,35 +72,38 @@ def fetch_top_movers():
 
 # ---------- FORMATTING ----------
 def get_pct(new, old):
-    if not old: return 0
+    if not old or new == old: return 0
     return ((new - old) / old) * 100
 
 def format_line(name, val, old, suffix=""):
-    price_fmt = f"{val:,.0f}" if val > 1000 else f"{val:.2f}"
+    if val > 1000: price_fmt = f"{val:,.0f}"
+    elif val > 1: price_fmt = f"{val:.2f}"
+    else: price_fmt = f"{val:.4f}"
+
     change = get_pct(val, old)
     
-    # ТВОЕ ТРЕБОВАНИЕ: Если движения нет, поле пустое
     if abs(change) < 0.01:
         return f"{name}: {price_fmt}{suffix}"
     
-    icon, sign = ("🟢", "+") if change > 0 else ("🔴", "")
+    sign = "+" if change > 0 else ""
+    icon = " 🟢" if change > 0 else " 🔴"
     return f"{name}: {price_fmt}{suffix} ({sign}{change:.2f}%) {icon}"
 
 def build_market_text():
     return (
-        "<b>📊 LIVE MARKET</b>\n\n"
+        "<b>LIVE MARKET</b>\n\n"
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'])}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'])}\n"
         f"▽ {format_line('TON', cache['ton'], prev_cache['ton'])}\n\n"
-        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
-        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+        f" {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
+        f" {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>' # Ссылка возвращена
     )
 
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=['start'])
 async def cmd_start(m: types.Message):
-    await m.answer("Бот запущен!", reply_markup=main_kb)
+    await m.answer("Бот запущен! Кнопки ниже 👇", reply_markup=main_kb)
 
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def btn_rates(m: types.Message):
@@ -121,35 +127,39 @@ async def market_loop():
         await loop.run_in_executor(None, fetch_market_data)
         await asyncio.sleep(150)
 
-async def post_market():
-    last_sent = ""
+async def post_market_loop():
     while True:
-        await asyncio.sleep(300)
-        text = build_market_text()
-        if text != last_sent and cache['btc'] > 0:
+        if cache['btc'] > 0:
             try:
-                await bot.send_message(CHANNEL_ID, text, parse_mode="HTML", disable_web_page_preview=True)
-                last_sent = text
-            except: pass
+                await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
+                logging.info("5-minute post sent.")
+            except Exception as e:
+                logging.error(f"Post error: {e}")
+        await asyncio.sleep(300)
 
-async def post_top():
+async def post_top_loop():
     while True:
+        await asyncio.sleep(3600)
         loop = asyncio.get_event_loop()
         txt = await loop.run_in_executor(None, fetch_top_movers)
         if txt and CHANNEL_ID:
             try:
                 await bot.send_animation(CHANNEL_ID, GIF_ID, caption=txt, parse_mode="HTML")
             except: pass
-        await asyncio.sleep(3600)
 
 # ---------- STARTUP ----------
 async def on_startup(_):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, fetch_market_data)
     await loop.run_in_executor(None, fetch_top_movers)
+    
+    try:
+        await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
+    except: pass
+
     asyncio.create_task(market_loop())
-    asyncio.create_task(post_market())
-    asyncio.create_task(post_top())
+    asyncio.create_task(post_market_loop())
+    asyncio.create_task(post_top_loop())
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
