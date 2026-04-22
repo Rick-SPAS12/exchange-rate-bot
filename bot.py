@@ -18,6 +18,7 @@ CHANNEL_ID = "@bi11ionaire"
 # ---------- CACHE ----------
 cache = {}
 prev_cache = {}
+last_top_cache = "🚀 TOP MOVERS (1h)\n\n⏳ loading...\n\n📌 @bi11ionaire"
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -33,8 +34,8 @@ def safe_get(url, params=None):
         r = requests.get(url, params=params, timeout=10)
         if r.status_code == 200:
             return r.json()
-    except Exception as e:
-        print("SAFE_GET ERROR:", e)
+    except:
+        pass
     return None
 
 # ---------- P2P ----------
@@ -54,13 +55,12 @@ def get_p2p_price(fiat):
 
         if isinstance(r, dict) and r.get("data"):
             return float(r["data"][0]["adv"]["price"])
-
-    except Exception as e:
-        print("P2P ERROR:", e)
+    except:
+        pass
 
     return None
 
-# ---------- FETCH ----------
+# ---------- MARKET ----------
 def fetch_rates():
     global cache
 
@@ -93,7 +93,7 @@ def fetch_rates():
         "cny": float(cny or cache.get("cny", 7.2)),
     }
 
-# ---------- TOP MOVERS ----------
+# ---------- MOVERS ----------
 def get_top_movers():
     try:
         r = safe_get(
@@ -123,15 +123,21 @@ def get_top_movers():
             })
 
         movers.sort(key=lambda x: abs(x["change"]), reverse=True)
+
         return movers[:5]
 
-    except Exception as e:
-        print("MOVERS ERROR:", e)
+    except:
         return []
 
 # ---------- TOP TEXT ----------
 def build_top():
+    global last_top_cache
+
     movers = get_top_movers()
+
+    # fallback если API умер
+    if not movers:
+        return last_top_cache
 
     text = "🚀 TOP MOVERS (1h)\n\n"
 
@@ -151,6 +157,8 @@ def build_top():
         text += f"{m['symbol']} {sign}{ch:.2f}% {icon}\n"
 
     text += "\n📌 @bi11ionaire"
+
+    last_top_cache = text
     return text
 
 # ---------- PRICE LOOP ----------
@@ -165,10 +173,8 @@ async def live_updater():
                 prev_cache = cache.copy() if cache else data
                 cache = data
 
-                print("UPDATED RATES OK")
-
         except Exception as e:
-            print("UPDATE LOOP ERROR:", e)
+            print("RATE LOOP ERROR:", e)
 
         await asyncio.sleep(300)
 
@@ -221,7 +227,7 @@ def line(sym, name, value, old, suffix=""):
 
     return f"{sym} {name}: {price}{suffix}"
 
-# ---------- MAIN TEXT ----------
+# ---------- MAIN ----------
 def build_text():
     if not cache:
         return "📊 Loading..."
@@ -233,8 +239,8 @@ def build_text():
         f"{line('₿','BTC',cache['btc'],p.get('btc'))}\n"
         f"{line('Ξ','ETH',cache['eth'],p.get('eth'))}\n"
         f"{line('▽','TON',cache['ton'],p.get('ton'))}\n\n"
-        f"{line('💵','USD→RUB',cache['rub'],p.get('rub'),' ₽')}\n"
-        f"{line('🇨🇳','USD→CNY',cache['cny'],p.get('cny'),' ¥')}\n\n"
+        f"{line('','USD→RUB',cache['rub'],p.get('rub'),' ₽')}\n"
+        f"{line('','USD→CNY',cache['cny'],p.get('cny'),' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -259,6 +265,7 @@ async def top(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     await callback.answer()
+
     await callback.message.edit_text(
         build_text(),
         reply_markup=inline_kb,
