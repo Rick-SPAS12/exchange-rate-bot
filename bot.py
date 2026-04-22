@@ -59,9 +59,11 @@ def get_p2p_price(fiat):
             timeout=7
         ).json()
 
-        return float(r["data"][0]["adv"]["price"])
+        if r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
     except:
-        return None
+        pass
+    return None
 
 
 # ==================== DATA ====================
@@ -100,10 +102,7 @@ def get_top():
 
     movers = []
     for c in data:
-        ch = c.get("price_change_percentage_1h_in_currency")
-        if ch is None:
-            continue
-
+        ch = c.get("price_change_percentage_1h_in_currency") or 0
         movers.append((c["symbol"].upper(), float(ch)))
 
     movers.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -186,8 +185,8 @@ async def top_post():
                 animation=GIF_ID,
                 caption=build_top()
             )
-        except Exception as e:
-            logging.error(e)
+        except:
+            pass
 
         await asyncio.sleep(TOP_INTERVAL)
 
