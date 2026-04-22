@@ -7,7 +7,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from aiogram.utils.exceptions import MessageNotModified
 
-# Настройка логов
 logging.basicConfig(level=logging.INFO)
 
 # ---------- CONFIG ----------
@@ -18,18 +17,9 @@ GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOw
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Кэш данных
 cache = {"btc": 0, "eth": 0, "ton": 0, "rub": 90.0, "cny": 7.0}
 prev_cache = cache.copy()
 top_movers_cache = "🔍 Данные загружаются..."
-
-# ---------- KEYBOARDS ----------
-main_kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-main_kb.add("📊 Exchange rates", "🚀 TOP")
-
-inline_kb = types.InlineKeyboardMarkup().add(
-    types.InlineKeyboardButton("🔄 Update", callback_data="update")
-)
 
 # ---------- DATA LOGIC ----------
 def fetch_market_data():
@@ -42,7 +32,6 @@ def fetch_market_data():
                                   json={"asset":"USDT","fiat":fiat,"page":1,"rows":1,"tradeType":"BUY"}, timeout=10).json()
                 return float(r["data"][0]["adv"]["price"])
             except: return None
-
         new_data = {
             "btc": float(res["bitcoin"]["usd"]),
             "eth": float(res["ethereum"]["usd"]),
@@ -53,7 +42,7 @@ def fetch_market_data():
         prev_cache = cache.copy()
         cache = new_data
     except Exception as e:
-        logging.error(f"Error fetching data: {e}")
+        logging.error(f"Error fetching: {e}")
 
 def fetch_top_movers():
     global top_movers_cache
@@ -76,27 +65,18 @@ def get_pct(new, old):
     if not old or new == old: return 0
     return ((new - old) / old) * 100
 
-def format_line(name, val, old, suffix="", is_high_value=False):
-    # Теперь для BTC и ETH (is_high_value) ставим запятую после тысячи
-    if is_high_value:
-        price_fmt = f"{val:,.2f}"
-    else:
-        price_fmt = f"{val:.2f}"
-
+def format_line(name, val, old, suffix="", is_high=False):
+    price_fmt = f"{val:,.2f}" if is_high else f"{val:.2f}"
     change = get_pct(val, old)
-    
-    if abs(change) < 0.01:
-        return f"{name}: {price_fmt}{suffix}"
-    
-    sign = "+" if change > 0 else ""
-    icon = " 🟢" if change > 0 else " 🔴"
+    if abs(change) < 0.01: return f"{name}: {price_fmt}{suffix}"
+    sign, icon = ("+", " 🟢") if change > 0 else ("", " 🔴")
     return f"{name}: {price_fmt}{suffix} ({sign}{change:.2f}%) {icon}"
 
 def build_market_text():
     return (
         "<b>LIVE MARKET</b>\n\n"
-        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'], is_high_value=True)}\n"
-        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'], is_high_value=True)}\n"
+        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'], is_high=True)}\n"
+        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'], is_high=True)}\n"
         f"▽ {format_line('TON', cache['ton'], prev_cache['ton'])}\n\n"
         f" {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
         f" {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
@@ -106,64 +86,65 @@ def build_market_text():
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=['start'])
 async def cmd_start(m: types.Message):
-    await m.answer("Бот запущен!", reply_markup=main_kb)
+    await m.answer("Бот запущен!", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("📊 Exchange rates", "🚀 TOP"))
 
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def btn_rates(m: types.Message):
-    await m.answer(build_market_text(), parse_mode="HTML", reply_markup=inline_kb, disable_web_page_preview=True)
+    await m.answer(build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
 
 @dp.message_handler(lambda m: m.text and "TOP" in m.text)
 async def btn_top(m: types.Message):
     await m.answer_animation(GIF_ID, caption=top_movers_cache, parse_mode="HTML")
 
-@dp.callback_query_handler(lambda c: c.data == "update")
-async def cb_update(c: types.CallbackQuery):
-    try:
-        await c.message.edit_text(build_market_text(), parse_mode="HTML", reply_markup=inline_kb, disable_web_page_preview=True)
-    except MessageNotModified: pass
-    await c.answer("Курсы обновлены")
-
 # ---------- LOOPS ----------
-async def market_loop():
+async def data_refresh_task():
+    """Обновляет цифры в памяти каждые 2.5 минуты"""
     while True:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, fetch_market_data)
         await asyncio.sleep(150)
 
-async def post_market_loop():
+async def market_posting_task():
+    """ТОЛЬКО 5-минутный пост LIVE MARKET"""
     while True:
-        await asyncio.sleep(300) # Цикл 5 минут
+        await asyncio.sleep(300) # Ждать 5 минут
         if cache['btc'] > 0:
             try:
                 await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
-                logging.info("5-minute post sent.")
+                logging.info("Отправлен 5-минутный пост LIVE MARKET")
             except Exception as e:
-                logging.error(f"Post error: {e}")
+                logging.error(f"Market post error: {e}")
 
-async def post_top_loop():
+async def top_posting_task():
+    """ТОЛЬКО часовой пост TOP MOVERS"""
     while True:
-        await asyncio.sleep(3600) # Цикл 1 час
+        await asyncio.sleep(3600) # Ждать 1 час
         loop = asyncio.get_event_loop()
+        # Обновляем ТОП перед постингом
         txt = await loop.run_in_executor(None, fetch_top_movers)
         if txt and CHANNEL_ID:
             try:
                 await bot.send_animation(CHANNEL_ID, GIF_ID, caption=txt, parse_mode="HTML")
-            except: pass
+                logging.info("Отправлен часовой пост TOP MOVERS")
+            except Exception as e:
+                logging.error(f"Top post error: {e}")
 
 # ---------- STARTUP ----------
 async def on_startup(_):
+    # Загружаем всё при старте
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, fetch_market_data)
     await loop.run_in_executor(None, fetch_top_movers)
     
-    # Мгновенный первый пост при запуске
+    # Делаем один приветственный пост LIVE MARKET
     try:
         await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
     except: pass
 
-    asyncio.create_task(market_loop())
-    asyncio.create_task(post_market_loop())
-    asyncio.create_task(post_top_loop())
+    # Запускаем задачи
+    asyncio.create_task(data_refresh_task())
+    asyncio.create_task(market_posting_task())
+    asyncio.create_task(top_posting_task())
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
