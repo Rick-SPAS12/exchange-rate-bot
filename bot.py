@@ -19,8 +19,8 @@ dp = Dispatcher(bot)
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
-cache = None
-prev_cache = None
+cache = {}
+prev_cache = {}
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -30,13 +30,15 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE REQUEST ----------
+# ---------- SAFE GET ----------
 def safe_get(url, params=None):
     try:
-        r = requests.get(url, params=params, timeout=8)
-        return r.json()
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code == 200:
+            return r.json()
     except:
-        return None
+        pass
+    return None
 
 # ---------- P2P ----------
 def get_p2p_price(fiat):
@@ -50,18 +52,17 @@ def get_p2p_price(fiat):
                 "rows": 1,
                 "tradeType": "BUY"
             },
-            timeout=8
+            timeout=10
         ).json()
 
-        if not r or "data" not in r or not r["data"]:
-            return None
-
-        return float(r["data"][0]["adv"]["price"])
-
+        if isinstance(r, dict) and r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
     except:
-        return None
+        pass
 
-# ---------- FETCH ----------
+    return None
+
+# ---------- MARKET ----------
 def fetch_rates():
     crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -74,25 +75,61 @@ def fetch_rates():
     if not crypto:
         return None
 
+    btc = crypto.get("bitcoin", {}).get("usd")
+    eth = crypto.get("ethereum", {}).get("usd")
+    ton = crypto.get("the-open-network", {}).get("usd")
+
+    if None in (btc, eth, ton):
+        return None
+
     rub = get_p2p_price("RUB")
     cny = get_p2p_price("CNY")
 
-    if cache:
-        rub = rub or cache["rub"]
-        cny = cny or cache["cny"]
-    else:
-        rub = rub or 90
-        cny = cny or 7.2
-
     return {
-        "btc": float(crypto["bitcoin"]["usd"]),
-        "eth": float(crypto["ethereum"]["usd"]),
-        "ton": float(crypto["the-open-network"]["usd"]),
-        "rub": rub,
-        "cny": cny,
+        "btc": float(btc),
+        "eth": float(eth),
+        "ton": float(ton),
+        "rub": float(rub or cache.get("rub", 90) or 90),
+        "cny": float(cny or cache.get("cny", 7.2) or 7.2),
     }
 
-# ---------- UPDATE LOOP ----------
+# ---------- MOVERS ----------
+def get_top_movers():
+    try:
+        r = safe_get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": 50,
+                "page": 1,
+                "price_change_percentage": "1h"
+            }
+        )
+
+        if not isinstance(r, list):
+            return []
+
+        movers = []
+
+        for c in r:
+            change = c.get("price_change_percentage_1h_in_currency")
+
+            if change is None:
+                continue
+
+            movers.append({
+                "symbol": c.get("symbol", "").upper(),
+                "change": float(change)
+            })
+
+        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
+        return movers[:5]
+
+    except:
+        return []
+
+# ---------- MARKET LOOP ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -104,59 +141,89 @@ async def live_updater():
                 prev_cache = cache.copy() if cache else data
                 cache = data
 
-        except Exception as e:
-            print("UPDATE ERROR:", e)
+        except:
+            pass
 
-        await asyncio.sleep(150)
+        await asyncio.sleep(300)
 
-# ---------- PRICE FORMAT ----------
-def format_price(name, value):
-    if name == "TON":
-        return f"{value:.2f}"
-    elif name in ["BTC", "ETH"]:
-        return f"{value:,.0f}"
-    else:
-        return f"{value:.2f}"
+# ---------- MOVERS LOOP ----------
+async def movers_poster():
+    last = ""
 
-# ---------- % CHANGE ----------
+    while True:
+        try:
+            movers = get_top_movers()
+
+            if not movers:
+                await asyncio.sleep(60)
+                continue
+
+            text = "🚀 TOP MOVERS (1h)\n\n"
+
+            for m in movers:
+                change = m["change"]
+
+                if change > 0:
+                    icon = "🟢"
+                    sign = "+"
+                else:
+                    icon = "🔴"
+                    sign = ""
+
+                text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
+
+            if text != last:
+                await bot.send_message(CHANNEL_ID, text)
+                last = text
+
+        except:
+            pass
+
+        await asyncio.sleep(3600)
+
+# ---------- FORMAT ----------
 def pct(new, old):
     if not old:
         return 0
     return ((new - old) / old) * 100
 
-# ---------- FINAL LINE FORMAT ----------
+def format_price(name, value):
+    if name == "TON":
+        return f"{value:.2f}"
+    elif name in ["BTC", "ETH"]:
+        return f"{value:,.0f}"
+    return f"{value:.2f}"
+
 def format_line(name, value, old, suffix=""):
     price = format_price(name, value)
 
-    # нет данных или первый запуск
     if not old:
         return f"{name}: {price}{suffix}"
 
     change = pct(value, old)
 
-    # нет движения → просто цена
     if value == old:
         return f"{name}: {price}{suffix}"
 
-    # вверх
     if value > old:
-        return f"{name}: {price}{suffix} (+{change:.2f}%) ↑ 🟢"
+        return f"{name}: {price}{suffix} (+{change:.2f}%) 🟢"
 
-    # вниз
-    return f"{name}: {price}{suffix} ({change:.2f}%) ↓ 🔴"
+    return f"{name}: {price}{suffix} ({change:.2f}%) 🔴"
 
 # ---------- TEXT ----------
 def build_text():
     if not cache:
         return "📊 Loading market data..."
 
+    p = prev_cache or cache
+
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'] if prev_cache else 0)}\n"
-        f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'] if prev_cache else 0)}\n"
-        f"▽ {format_line('TON', cache['ton'], prev_cache['ton'] if prev_cache else 0)}\n\n"
-        f" {format_line('USD→RUB', cache['rub'], prev_cache['rub'] if prev_cache else 0, ' ₽')}\n"
-        f" {format_line('USD→CNY', cache['cny'], prev_cache['cny'] if prev_cache else 0, ' ¥')}\n\n"
+        f"₿ {format_line('BTC', cache['btc'], p.get('btc'))}\n"
+        f"Ξ {format_line('ETH', cache['eth'], p.get('eth'))}\n"
+        f"▽ {format_line('TON', cache['ton'], p.get('ton'))}\n\n"
+        f" {format_line('USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
+        f" {format_line('USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -185,39 +252,9 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- CHANNEL POST ----------
-async def channel_poster():
-    global cache
-
-    last = ""
-
-    while True:
-        try:
-            if not cache:
-                await asyncio.sleep(5)
-                continue
-
-            text = build_text()
-
-            if text != last:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True
-                )
-                last = text
-
-        except Exception as e:
-            print("CHANNEL ERROR:", e)
-
-        await asyncio.sleep(300)
-
-# ---------- START ----------
+# ---------- STARTUP ----------
 async def on_startup(_):
     global cache, prev_cache
-
-    print("BOT STARTED")
 
     data = fetch_rates()
     if data:
@@ -225,7 +262,7 @@ async def on_startup(_):
         prev_cache = data.copy()
 
     asyncio.create_task(live_updater())
-    asyncio.create_task(channel_poster())
+    asyncio.create_task(movers_poster())
 
 # ---------- RUN ----------
 if __name__ == "__main__":
