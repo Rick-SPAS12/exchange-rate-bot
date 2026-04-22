@@ -1,6 +1,7 @@
 import os
 import asyncio
 import requests
+import time
 import logging
 
 from aiogram import Bot, Dispatcher, types
@@ -40,9 +41,11 @@ inline_kb = InlineKeyboardMarkup().add(
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=7)
-        return r.json() if r.status_code == 200 else None
+        if r.status_code == 200:
+            return r.json()
     except:
-        return None
+        pass
+    return None
 
 
 def get_p2p_price(fiat):
@@ -59,11 +62,9 @@ def get_p2p_price(fiat):
             timeout=7
         ).json()
 
-        if r.get("data"):
-            return float(r["data"][0]["adv"]["price"])
+        return float(r["data"][0]["adv"]["price"])
     except:
-        pass
-    return None
+        return None
 
 
 # ==================== DATA ====================
@@ -102,7 +103,10 @@ def get_top():
 
     movers = []
     for c in data:
-        ch = c.get("price_change_percentage_1h_in_currency") or 0
+        ch = c.get("price_change_percentage_1h_in_currency")
+        if ch is None:
+            continue
+
         movers.append((c["symbol"].upper(), float(ch)))
 
     movers.sort(key=lambda x: abs(x[1]), reverse=True)
@@ -180,13 +184,20 @@ async def updater():
 async def top_post():
     while True:
         try:
-            await bot.send_animation(
-                CHANNEL_ID,
-                animation=GIF_ID,
-                caption=build_top()
-            )
-        except:
-            pass
+            text = build_top()
+
+            # SAFE GIF (не падает если битый)
+            try:
+                await bot.send_animation(
+                    CHANNEL_ID,
+                    animation=GIF_ID,
+                    caption=text
+                )
+            except:
+                await bot.send_message(CHANNEL_ID, text)
+
+        except Exception as e:
+            logging.error(e)
 
         await asyncio.sleep(TOP_INTERVAL)
 
@@ -209,7 +220,12 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer_animation(GIF_ID, caption=build_top())
+    text = build_top()
+
+    try:
+        await m.answer_animation(GIF_ID, caption=text)
+    except:
+        await m.answer(text)
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
