@@ -18,20 +18,20 @@ GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOw
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Глобальное хранилище
+# Глобальное состояние (Таймеры и Кэш)
 state = {
     "cache": {"btc": 0, "eth": 0, "ton": 0, "rub": 90.0, "cny": 7.0},
     "prev_cache": {"btc": 0, "eth": 0, "ton": 0, "rub": 90.0, "cny": 7.0},
     "top_movers_text": "🔍 Загрузка данных...",
-    "last_market_post": 0,
-    "last_top_post": 0
+    "last_market_post": 0,    # Время последнего поста 5-минутки
+    "last_top_post": 0        # Время последнего часового поста
 }
 
-# ---------- LOGIC ----------
-def sync_fetch_all():
-    """Синхронный сбор всех данных сразу"""
+# ---------- LOGIC: FETCHING ----------
+def sync_fetch_data():
+    """Сбор всех данных в один присест"""
     try:
-        # Курсы крипты
+        # Крипта
         res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,the-open-network&vs_currencies=usd", timeout=10).json()
         
         # P2P Валюты
@@ -62,18 +62,23 @@ def sync_fetch_all():
             txt += f"<code>{coin['symbol']}</code> {sign}{coin['change']:.2f}% {icon}\n"
         txt += "\n📌 @bi11ionaire"
         state["top_movers_text"] = txt
-        
-        logging.info("Данные успешно обновлены.")
+        logging.info("Данные кэша обновлены.")
     except Exception as e:
-        logging.error(f"Ошибка сбора данных: {e}")
+        logging.error(f"Ошибка при сборе данных: {e}")
 
+# ---------- FORMATTING ----------
 def format_line(name, val, old, suffix="", is_high=False):
+    # Запятые для тысяч у BTC/ETH
     price_fmt = f"{val:,.2f}" if is_high else f"{val:.2f}"
     change = ((val - old) / old * 100) if old and val != old else 0
-    if abs(change) < 0.01: return f"{name}: {price_fmt}{suffix}"
+    
+    if abs(change) < 0.01:
+        return f"{name}: {price_fmt}{suffix}"
+    
     sign, icon = ("+", " 🟢") if change > 0 else ("", " 🔴")
     return f"{name}: {price_fmt}{suffix} ({sign}{change:.2f}%) {icon}"
 
+# ТВОЯ ЧАСТЬ БЕЗ ИЗМЕНЕНИЙ
 def build_market_text():
     c, p = state["cache"], state["prev_cache"]
     return (
@@ -89,7 +94,8 @@ def build_market_text():
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=['start'])
 async def cmd_start(m: types.Message):
-    await m.answer("Бот запущен!", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("📊 Exchange rates", "🚀 TOP"))
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True).add("📊 Exchange rates", "🚀 TOP")
+    await m.answer("Бот запущен!", reply_markup=kb)
 
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def btn_rates(m: types.Message):
@@ -99,51 +105,50 @@ async def btn_rates(m: types.Message):
 async def btn_top(m: types.Message):
     await m.answer_animation(GIF_ID, caption=state["top_movers_text"], parse_mode="HTML")
 
-# ---------- MAIN MASTER LOOP ----------
-async def master_loop():
-    """Единый цикл управления всем ботом"""
+# ---------- MASTER POSTING LOOP ----------
+async def main_bot_loop():
+    """Единый цикл управления всеми таймерами"""
     while True:
         now = time.time()
         
-        # 1. Обновляем данные (раз в 2.5 минуты)
+        # Обновляем данные в кэше раз в 2.5 минуты
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, sync_fetch_all)
+        await loop.run_in_executor(None, sync_fetch_data)
 
-        # 2. Проверяем автопостинг Маркета (каждые 5 минут / 300 сек)
+        # 1. Постинг МАРКЕТА (раз в 5 минут = 300 секунд)
         if now - state["last_market_post"] >= 300:
             if state["cache"]["btc"] > 0:
                 try:
                     await bot.send_message(CHANNEL_ID, build_market_text(), parse_mode="HTML", disable_web_page_preview=True)
                     state["last_market_post"] = now
-                    logging.info("Пост MARKET отправлен в канал.")
+                    logging.info("✅ 5-минутный пост отправлен.")
                 except Exception as e:
-                    logging.error(f"Ошибка маркет-поста: {e}")
+                    logging.error(f"Ошибка 5-минутки: {e}")
 
-        # 3. Проверяем автопостинг ТОПа (каждый час / 3600 сек)
+        # 2. Постинг ТОПа (раз в час = 3600 секунд)
         if now - state["last_top_post"] >= 3600:
             if "🚀" in state["top_movers_text"]:
                 try:
                     await bot.send_animation(CHANNEL_ID, GIF_ID, caption=state["top_movers_text"], parse_mode="HTML")
                     state["last_top_post"] = now
-                    logging.info("Пост TOP отправлен в канал.")
+                    logging.info("🚀 Часовой пост отправлен.")
                 except Exception as e:
-                    logging.error(f"Ошибка топ-поста: {e}")
+                    logging.error(f"Ошибка часового поста: {e}")
 
-        # Пауза цикла (короткая, чтобы не пропустить тайминги)
-        await asyncio.sleep(60) 
+        # Проверка каждые 30 секунд, не пора ли что-то постить
+        await asyncio.sleep(30)
 
 # ---------- STARTUP ----------
 async def on_startup(_):
-    # Первый запуск данных
+    # При запуске наполняем кэш сразу
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, sync_fetch_all)
+    await loop.run_in_executor(None, sync_fetch_data)
     
-    # Сразу ставим время последнего поста как "сейчас минус интервал", 
-    # чтобы первый пост вылетел мгновенно при старте
+    # Чтобы маркет улетел сразу, а ТОП — через 1 час после запуска
     state["last_market_post"] = 0 
-    state["last_top_post"] = time.time() - 3000 # ТОП вылетит через 10 мин после старта
+    state["last_top_post"] = time.time()
     
-    asyncio.create_task(master_loop())
+    asyncio.create_task(main_bot_loop())
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
