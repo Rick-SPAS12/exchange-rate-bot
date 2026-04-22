@@ -6,22 +6,18 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
-# ---------- TOKEN ----------
 API_TOKEN = os.getenv("API_TOKEN") or "PASTE_YOUR_TOKEN_HERE"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ---------- CHANNEL ----------
 CHANNEL_ID = "@bi11ionaire"
 
-# ---------- CACHE ----------
 cache = {}
 prev_cache = {}
 last_market_post = ""
 last_top_post = ""
 
-# ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
@@ -29,7 +25,7 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
-# ---------- SAFE REQUEST ----------
+
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -39,7 +35,7 @@ def safe_get(url, params=None):
         pass
     return None
 
-# ---------- P2P ----------
+
 def get_p2p_price(fiat):
     try:
         r = requests.post(
@@ -60,7 +56,7 @@ def get_p2p_price(fiat):
         pass
     return None
 
-# ---------- MARKET ----------
+
 def fetch_rates():
     crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
@@ -81,7 +77,7 @@ def fetch_rates():
         "cny": get_p2p_price("CNY") or cache.get("cny", 7.2),
     }
 
-# ---------- TOP MOVERS ----------
+
 def get_top_movers():
     try:
         r = safe_get(
@@ -99,7 +95,6 @@ def get_top_movers():
             return []
 
         movers = []
-
         for c in r:
             ch = c.get("price_change_percentage_1h_in_currency")
             if ch is None:
@@ -116,7 +111,7 @@ def get_top_movers():
     except:
         return []
 
-# ---------- FORMAT ----------
+
 def pct(new, old):
     if not old:
         return 0
@@ -124,31 +119,27 @@ def pct(new, old):
 
 
 def format_price(name, value):
-    # BTC / ETH с разделителями тысяч
     if name in ["BTC", "ETH"]:
-        # 77,526 -> если хочешь 77.526 замени "," на "."
-        return f"{value:,.0f}"
+        return f"{value:,.0f}".replace(",", ".")
     return f"{value:.2f}"
 
 
-def line(sym, name, value, old):
+def line(sym, name, value, old, suffix=""):
     price = format_price(name, value)
 
-    # если нет старого значения
     if not old:
-        return f"{sym} {name}: {price}"
+        return f"{sym} {name}: {price}{suffix}"
 
     ch = pct(value, old)
 
-    # ВСЕГДА показываем процент если было движение
     if ch > 0:
-        return f"{sym} {name}: {price} (+{ch:.2f}%) 🟢"
+        return f"{sym} {name}: {price}{suffix} (+{ch:.2f}%) 🟢"
     elif ch < 0:
-        return f"{sym} {name}: {price} ({ch:.2f}%) 🔴"
+        return f"{sym} {name}: {price}{suffix} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {price}"
+    return f"{sym} {name}: {price}{suffix}"
 
-# ---------- LIVE TEXT ----------
+
 def build_text():
     if not cache:
         return "📊 Loading..."
@@ -156,15 +147,16 @@ def build_text():
     p = prev_cache or cache
 
     return (
-    "<b>📊 LIVE MARKET</b>\n\n"
-    f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
-    f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
-    f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
-    f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']), '₽')}\n"
-    f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']), '¥')}\n\n"
-    "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
-)
-# ---------- TOP TEXT ----------
+        "<b>📊 LIVE MARKET</b>\n\n"
+        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
+        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
+        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
+        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']), '₽')}\n"
+        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']), '¥')}\n\n"
+        "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
+    )
+
+
 def build_top():
     movers = get_top_movers()
 
@@ -182,7 +174,7 @@ def build_top():
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- LOOP ----------
+
 async def updater():
     global cache, prev_cache
 
@@ -191,8 +183,8 @@ async def updater():
         if data:
             prev_cache = cache.copy() if cache else data
             cache = data
-
         await asyncio.sleep(300)
+
 
 async def market_poster():
     global last_market_post
@@ -212,6 +204,7 @@ async def market_poster():
 
         await asyncio.sleep(300)
 
+
 async def top_poster():
     global last_top_post
 
@@ -228,12 +221,13 @@ async def top_poster():
 
         await asyncio.sleep(3600)
 
-# ---------- HANDLERS ----------
+
 @dp.message_handler(commands=["start"])
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
+
+@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
     await m.answer(
         build_text(),
@@ -242,12 +236,14 @@ async def rates(m: types.Message):
         reply_markup=inline_kb
     )
 
-@dp.message_handler(lambda m: m.text and "TOP" in m.text)
+
+@dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
     await m.answer(
         build_top(),
         disable_web_page_preview=True
     )
+
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
@@ -259,12 +255,12 @@ async def update(c: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- START ----------
+
 async def on_startup(_):
     asyncio.create_task(updater())
     asyncio.create_task(market_poster())
     asyncio.create_task(top_poster())
 
-# ---------- RUN ----------
+
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
