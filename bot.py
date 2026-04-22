@@ -204,19 +204,27 @@ from aiohttp import web
 async def health_check(request):
     return web.Response(text="OK")
 
-async def main():
+async def run_bot():
+    """Запуск бота в отдельной корутине"""
     asyncio.create_task(updater())
     asyncio.create_task(top_post())
-    
+    await dp.start_polling(bot)
+
+async def main():
+    # Сначала запускаем веб-сервер
     app = web.Application()
     app.router.add_get("/", health_check)
+    app.router.add_get("/health", health_check)
+    
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
     
-    print(f"Bot running on port {PORT}")
-    await dp.start_polling(bot)
+    print(f"Web server running on port {PORT}")
+    
+    # Потом запускаем бота (это блокирующая операция)
+    await run_bot()
 
 if __name__ == "__main__":
     asyncio.run(main())
