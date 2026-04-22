@@ -23,7 +23,6 @@ inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
-# ⚡ ВАЖНО: теперь кнопка более стабильная
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange", "🚀 TOP")
 
@@ -31,9 +30,11 @@ keyboard.add("📊 Exchange", "🚀 TOP")
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
-        return r.json()
+        if r.status_code == 200:
+            return r.json()
     except:
-        return None
+        pass
+    return None
 
 # ---------- P2P ----------
 def get_p2p_price(fiat):
@@ -50,9 +51,12 @@ def get_p2p_price(fiat):
             timeout=10
         ).json()
 
-        return float(r["data"][0]["adv"]["price"])
+        if isinstance(r, dict) and r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
     except:
-        return None
+        pass
+
+    return None
 
 # ---------- MARKET ----------
 def fetch_rates():
@@ -89,6 +93,9 @@ def get_top():
             }
         )
 
+        if not isinstance(r, list):
+            return []
+
         movers = []
         for c in r:
             ch = c.get("price_change_percentage_1h_in_currency")
@@ -104,6 +111,18 @@ def get_top():
         return []
 
 # ---------- FORMAT ----------
+def pct(new, old):
+    if not old:
+        return 0
+    return ((new - old) / old) * 100
+
+def format_price(name, value):
+    if name in ["BTC", "ETH"]:
+        return f"{value:,.0f}"
+    elif name == "TON":
+        return f"{value:.2f}"
+    return f"{value:.2f}"
+
 def line(sym, name, value, old, suffix=""):
     price = format_price(name, value)
 
@@ -118,6 +137,7 @@ def line(sym, name, value, old, suffix=""):
         return f"{sym} {name}: {price}{suffix} ({ch:.2f}%) 🔴"
 
     return f"{sym} {name}: {price}{suffix}"
+
 # ---------- TEXT ----------
 def build_text():
     if not cache:
@@ -138,6 +158,9 @@ def build_text():
 # ---------- TOP TEXT ----------
 def build_top():
     data = get_top()
+
+    if not data:
+        return "🚀 TOP MOVERS\n\nНет данных"
 
     text = "🚀 TOP MOVERS (1h)\n\n"
 
@@ -161,7 +184,6 @@ async def updater():
 
         await asyncio.sleep(300)
 
-# ---------- MARKET POST ----------
 async def market_poster():
     last = ""
 
@@ -180,7 +202,6 @@ async def market_poster():
 
         await asyncio.sleep(300)
 
-# ---------- TOP POST ----------
 async def top_poster():
     last = ""
 
@@ -202,7 +223,6 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-# ✅ СТАБИЛЬНАЯ КНОПКА (НЕ ЛОМАЕТСЯ ОТ TELEGRAM)
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
@@ -214,7 +234,10 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text and "TOP" in m.text)
 async def top(m: types.Message):
-    await m.answer(build_top())
+    await m.answer(
+        build_top(),
+        disable_web_page_preview=True
+    )
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
