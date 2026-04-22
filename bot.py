@@ -54,9 +54,13 @@ def get_p2p_price(fiat):
             timeout=10
         ).json()
 
-        return float(r["data"][0]["adv"]["price"])
+        if isinstance(r, dict) and r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
+
     except:
-        return None
+        pass
+
+    return None
 
 # ---------- MARKET ----------
 def fetch_rates():
@@ -93,14 +97,19 @@ def get_top_movers():
             }
         )
 
+        if not isinstance(r, list):
+            return []
+
         movers = []
+
         for c in r:
             ch = c.get("price_change_percentage_1h_in_currency")
+
             if ch is None:
                 continue
 
             movers.append({
-                "symbol": c["symbol"].upper(),
+                "symbol": c.get("symbol", "").upper(),
                 "change": float(ch)
             })
 
@@ -138,17 +147,20 @@ def build_text():
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿','BTC',cache['btc'],p.get('btc'))}\n"
-        f"{line('Ξ','ETH',cache['eth'],p.get('eth'))}\n"
-        f"{line('▽','TON',cache['ton'],p.get('ton'))}\n\n"
-        f"{line('','USD→RUB',cache['rub'],p.get('rub'))}\n"
-        f"{line('','USD→CNY',cache['cny'],p.get('cny'))}\n\n"
+        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
+        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
+        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
+        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']))}\n"
+        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']))}\n\n"
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
 # ---------- TOP TEXT ----------
 def build_top():
     movers = get_top_movers()
+
+    if not movers:
+        return "🚀 TOP MOVERS\n\nНет данных"
 
     text = "🚀 TOP MOVERS (1h)\n\n"
 
@@ -161,7 +173,7 @@ def build_top():
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- LOOP: DATA ----------
+# ---------- LOOP ----------
 async def updater():
     global cache, prev_cache
 
@@ -173,7 +185,7 @@ async def updater():
 
         await asyncio.sleep(300)
 
-# ---------- LOOP: LIVE POST ----------
+# ---------- MARKET POST ----------
 async def market_poster():
     global last_market_post
 
@@ -183,16 +195,16 @@ async def market_poster():
 
             if text != last_market_post:
                 await bot.send_message(
-    CHANNEL_ID,
-    text,
-    parse_mode="HTML",
-    disable_web_page_preview=True
-)
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
                 last_market_post = text
 
         await asyncio.sleep(300)
 
-# ---------- LOOP: TOP POST ----------
+# ---------- TOP POST ----------
 async def top_poster():
     global last_top_post
 
@@ -200,10 +212,7 @@ async def top_poster():
         text = build_top()
 
         if text != last_top_post:
-            await bot.send_message(
-                CHANNEL_ID,
-                text
-            )
+            await bot.send_message(CHANNEL_ID, text)
             last_top_post = text
 
         await asyncio.sleep(3600)
