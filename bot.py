@@ -211,7 +211,7 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
+@dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
     await m.answer(
         build_text(),
@@ -220,7 +220,7 @@ async def rates(m: types.Message):
         disable_web_page_preview=True
     )
 
-@dp.message_handler(lambda m: m.text and "TOP" in m.text)
+@dp.message_handler(lambda m: m.text and "🚀TOP" in m.text)
 async def top(m: types.Message):
     await m.answer(
         build_top(),
