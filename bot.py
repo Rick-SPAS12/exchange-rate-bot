@@ -19,8 +19,8 @@ dp = Dispatcher(bot)
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
-cache = {}
-prev_cache = {}
+cache = None
+prev_cache = None
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -37,8 +37,7 @@ def safe_get(url, params=None):
         if r.status_code == 200:
             return r.json()
     except:
-        pass
-    return None
+        return None
 
 # ---------- P2P ----------
 def get_p2p_price(fiat):
@@ -58,12 +57,12 @@ def get_p2p_price(fiat):
         if isinstance(r, dict) and r.get("data"):
             return float(r["data"][0]["adv"]["price"])
     except:
-        pass
-
-    return None
+        return None
 
 # ---------- MARKET ----------
 def fetch_rates():
+    global cache
+
     crypto = safe_get(
         "https://api.coingecko.com/api/v3/simple/price",
         params={
@@ -89,46 +88,11 @@ def fetch_rates():
         "btc": float(btc),
         "eth": float(eth),
         "ton": float(ton),
-        "rub": float(rub or cache.get("rub", 90) or 90),
-        "cny": float(cny or cache.get("cny", 7.2) or 7.2),
+        "rub": float(rub or (cache or {}).get("rub", 90)),
+        "cny": float(cny or (cache or {}).get("cny", 7.2)),
     }
 
-# ---------- MOVERS ----------
-def get_top_movers():
-    try:
-        r = safe_get(
-            "https://api.coingecko.com/api/v3/coins/markets",
-            params={
-                "vs_currency": "usd",
-                "order": "market_cap_desc",
-                "per_page": 50,
-                "page": 1,
-                "price_change_percentage": "1h"
-            }
-        )
-
-        if not isinstance(r, list):
-            return []
-
-        movers = []
-
-        for c in r:
-            change = c.get("price_change_percentage_1h_in_currency")
-            if change is None:
-                continue
-
-            movers.append({
-                "symbol": c.get("symbol", "").upper(),
-                "change": float(change)
-            })
-
-        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
-        return movers[:5]
-
-    except:
-        return []
-
-# ---------- MARKET LOOP (5 min) ----------
+# ---------- LOOP: MARKET (5 min) ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -140,51 +104,10 @@ async def live_updater():
                 prev_cache = cache.copy() if cache else data
                 cache = data
 
-        except:
-            pass
+        except Exception as e:
+            print("UPDATE ERROR:", e)
 
         await asyncio.sleep(300)
-
-# ---------- MOVERS LOOP (1 hour) ----------
-async def movers_poster():
-    last = ""
-
-    while True:
-        try:
-            movers = get_top_movers()
-
-            if not movers:
-                await asyncio.sleep(3600)
-                continue
-
-            text = "🚀 TOP MOVERS (1h)\n\n"
-
-            for m in movers:
-                change = m["change"]
-
-                if change > 0:
-                    icon = "🟢"
-                    sign = "+"
-                elif change < 0:
-                    icon = "🔴"
-                    sign = ""
-                else:
-                    icon = "⚪"
-                    sign = ""
-
-                text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
-
-            # 📌 канал всегда последней строкой
-            text += "\n📌 @bi11ionaire"
-
-            if text != last:
-                await bot.send_message(CHANNEL_ID, text)
-                last = text
-
-        except:
-            pass
-
-        await asyncio.sleep(3600)
 
 # ---------- FORMAT ----------
 def pct(new, old):
@@ -216,20 +139,23 @@ def format_line(symbol, name, value, old, suffix=""):
 
 # ---------- TEXT ----------
 def build_text():
+    global cache, prev_cache
+
     if not cache:
         return "📊 Loading market data..."
 
     p = prev_cache or cache
 
     return (
-    "<b>📊 LIVE MARKET</b>\n\n"
-    f"{format_line('₿', 'BTC', cache['btc'], p.get('btc'))}\n"
-    f"{format_line('Ξ', 'ETH', cache['eth'], p.get('eth'))}\n"
-    f"{format_line('▽', 'TON', cache['ton'], p.get('ton'))}\n\n"
-    f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
-    f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
-    '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
-)
+        "<b>📊 LIVE MARKET</b>\n\n"
+        f"{format_line('₿', 'BTC', cache['btc'], p.get('btc'))}\n"
+        f"{format_line('Ξ', 'ETH', cache['eth'], p.get('eth'))}\n"
+        f"{format_line('▽', 'TON', cache['ton'], p.get('ton'))}\n\n"
+        f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
+        f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+    )
+
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
@@ -247,6 +173,7 @@ async def rates(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     await callback.answer()
+
     await callback.message.edit_text(
         build_text(),
         reply_markup=inline_kb,
@@ -254,7 +181,33 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- START ----------
+# ---------- CHANNEL POSTER (5 min) ----------
+async def channel_poster():
+    last = None
+
+    while True:
+        try:
+            if not cache:
+                await asyncio.sleep(5)
+                continue
+
+            text = build_text()
+
+            if text and text != last:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    parse_mode="HTML",
+                    disable_web_page_preview=True
+                )
+                last = text
+
+        except Exception as e:
+            print("POST ERROR:", e)
+
+        await asyncio.sleep(300)
+
+# ---------- STARTUP ----------
 async def on_startup(_):
     global cache, prev_cache
 
@@ -264,7 +217,7 @@ async def on_startup(_):
         prev_cache = data.copy()
 
     asyncio.create_task(live_updater())
-    asyncio.create_task(movers_poster())
+    asyncio.create_task(channel_poster())
 
 # ---------- RUN ----------
 if __name__ == "__main__":
