@@ -122,18 +122,31 @@ def pct(new, old):
         return 0
     return ((new - old) / old) * 100
 
+
+def format_price(name, value):
+    # BTC / ETH с разделителями тысяч
+    if name in ["BTC", "ETH"]:
+        # 77,526 -> если хочешь 77.526 замени "," на "."
+        return f"{value:,.0f}"
+    return f"{value:.2f}"
+
+
 def line(sym, name, value, old):
+    price = format_price(name, value)
+
+    # если нет старого значения
     if not old:
-        return f"{sym} {name}: {value:.2f}"
+        return f"{sym} {name}: {price}"
 
     ch = pct(value, old)
 
-    if value > old:
-        return f"{sym} {name}: {value:.2f} (+{ch:.2f}%) 🟢"
-    elif value < old:
-        return f"{sym} {name}: {value:.2f} ({ch:.2f}%) 🔴"
+    # ВСЕГДА показываем процент если было движение
+    if ch > 0:
+        return f"{sym} {name}: {price} (+{ch:.2f}%) 🟢"
+    elif ch < 0:
+        return f"{sym} {name}: {price} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}"
+    return f"{sym} {name}: {price}"
 
 # ---------- LIVE TEXT ----------
 def build_text():
