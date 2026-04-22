@@ -122,6 +122,15 @@ def get_top():
     movers.sort(key=lambda x: abs(x[1]), reverse=True)
     return movers[:5]
 
+# ================= ASYNC WRAPPERS =================
+async def async_fetch_rates():
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, fetch_rates)
+
+async def async_get_top():
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_top)
+
 # ================= TEXT =================
 def build_market():
     if not cache:
@@ -139,8 +148,8 @@ def build_market():
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
-def build_top():
-    movers = get_top()
+async def build_top_async():
+    movers = await async_get_top()
 
     if not movers:
         return "<b>🚀 TOP MOVERS (1h)</b>\n\nNo data"
@@ -156,28 +165,39 @@ def build_top():
 # ================= TASKS =================
 async def updater():
     global cache, prev_cache
+    # Сначала заполняем кэш перед началом постов
+    data = await async_fetch_rates()
+    if data:
+        cache = data
+    
     while True:
-        data = fetch_rates()
+        await asyncio.sleep(UPDATE_INTERVAL)
+        data = await async_fetch_rates()
         if data:
             if cache:
                 prev_cache = cache.copy()
             cache = data
-        await asyncio.sleep(UPDATE_INTERVAL)
 
 async def market_post():
+    # Ждём первый апдейт кэша
+    while not cache:
+        await asyncio.sleep(1)
+    
     while True:
         try:
-            await bot.send_message(CHANNEL_ID, build_market(), parse_mode="HTML")
+            if cache:  # Проверяем что кэш не пустой
+                await bot.send_message(CHANNEL_ID, build_market(), parse_mode="HTML")
         except Exception as e:
-            logging.error(e)
+            logging.error(f"market_post error: {e}")
         await asyncio.sleep(UPDATE_INTERVAL)
 
 async def top_post():
     while True:
         try:
-            await bot.send_animation(CHANNEL_ID, GIF_ID, caption=build_top(), parse_mode="HTML")
+            caption = await build_top_async()
+            await bot.send_animation(CHANNEL_ID, GIF_ID, caption=caption, parse_mode="HTML")
         except Exception as e:
-            logging.error(e)
+            logging.error(f"top_post error: {e}")
         await asyncio.sleep(TOP_INTERVAL)
 
 # ================= HANDLERS =================
@@ -191,12 +211,18 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP MOVERS")
 async def top(m: types.Message):
-    await m.answer_animation(GIF_ID, caption=build_top(), parse_mode="HTML")
+    caption = await build_top_async()
+    await m.answer_animation(GIF_ID, caption=caption, parse_mode="HTML")
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
     await c.answer()
-    await c.message.edit_text(build_market(), parse_mode="HTML", reply_markup=inline_kb)
+    # Обрабатываем MessageNotModified
+    try:
+        await c.message.edit_text(build_market(), parse_mode="HTML", reply_markup=inline_kb)
+    except Exception as e:
+        if "message is not modified" not in str(e).lower():
+            logging.error(f"update error: {e}")
 
 # ================= START =================
 async def on_startup(_):
