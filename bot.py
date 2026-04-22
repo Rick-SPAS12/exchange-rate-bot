@@ -20,14 +20,13 @@ cache = None
 prev_cache = None
 
 # ---------- UI ----------
-inline_kb = InlineKeyboardMarkup(row_width=2)
-inline_kb.add(
-    InlineKeyboardButton("🔄 Update", callback_data="update"),
-    InlineKeyboardButton("🚀 TOP", callback_data="top")
+inline_kb = InlineKeyboardMarkup().add(
+    InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
+# ✅ FIX: TOP теперь рядом с Exchange rates
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add("📊 Exchange rates")
+keyboard.add("📊 Exchange rates", "🚀 TOP")
 
 # ---------- SAFE REQUEST ----------
 def safe_get(url, params=None):
@@ -57,7 +56,9 @@ def get_p2p_price(fiat):
         if isinstance(r, dict) and r.get("data"):
             return float(r["data"][0]["adv"]["price"])
     except:
-        return None
+        pass
+
+    return None
 
 # ---------- MARKET ----------
 def fetch_rates():
@@ -124,7 +125,7 @@ def get_top_movers():
     except:
         return []
 
-# ---------- BUILD TOP TEXT ----------
+# ---------- TOP TEXT ----------
 def build_top():
     movers = get_top_movers()
 
@@ -145,7 +146,8 @@ def build_top():
 
         text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
 
-    text += "\n📌 @bi11ionaire"
+    # 🔥 твоя ссылка сохраняется
+    text += "\n📌 @CryptoBot"
     return text
 
 # ---------- MARKET LOOP ----------
@@ -165,7 +167,7 @@ async def live_updater():
 
         await asyncio.sleep(300)
 
-# ---------- MOVERS LOOP (1h) ----------
+# ---------- TOP LOOP ----------
 async def movers_poster():
     last = None
 
@@ -176,7 +178,8 @@ async def movers_poster():
             if text != last:
                 await bot.send_message(
                     CHANNEL_ID,
-                    text
+                    text,
+                    disable_web_page_preview=True  # 🚫 без предпросмотра
                 )
                 last = text
 
@@ -213,7 +216,7 @@ def format_line(symbol, name, value, old, suffix=""):
     else:
         return f"{symbol} {name}: {price}{suffix}"
 
-# ---------- TEXT ----------
+# ---------- MAIN TEXT ----------
 def build_text():
     if not cache:
         return "📊 Loading market data..."
@@ -227,7 +230,7 @@ def build_text():
         f"{format_line('▽','TON', cache['ton'], p.get('ton'))}\n\n"
         f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
         f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
-        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
+        "📌 @CryptoBot"
     )
 
 # ---------- HANDLERS ----------
@@ -240,19 +243,23 @@ async def rates(message: types.Message):
     await message.answer(
         build_text(),
         reply_markup=inline_kb,
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True  # 🚫 убрал превью
     )
 
-# ---------- CALLBACKS ----------
+@dp.message_handler(lambda m: m.text == "🚀 TOP")
+async def top_button(message: types.Message):
+    await message.answer(build_top(), disable_web_page_preview=True)
+
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(build_text(), reply_markup=inline_kb, parse_mode="HTML")
-
-@dp.callback_query_handler(lambda c: c.data == "top")
-async def top_button(callback: types.CallbackQuery):
-    await callback.answer()
-    await callback.message.answer(build_top())
+    await callback.message.edit_text(
+        build_text(),
+        reply_markup=inline_kb,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
 
 # ---------- START ----------
 async def on_startup(_):
