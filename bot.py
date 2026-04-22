@@ -14,9 +14,10 @@ if not API_TOKEN:
     raise ValueError("API_TOKEN not set in environment")
 
 CHANNEL_ID = "@bi11ionaire"
-UPDATE_INTERVAL = 300      # 5 минут курс
-MARKET_POST_INTERVAL = 300  # 5 минут пост в канал
-TOP_POST_INTERVAL = 3600    # 1 час топ
+
+UPDATE_INTERVAL = 300
+MARKET_POST_INTERVAL = 300
+TOP_POST_INTERVAL = 3600
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,52 +41,38 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
-# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
+# ==================== SAFE REQUEST ====================
 def safe_get(url, params=None, retries=3):
-    for attempt in range(retries):
+    for i in range(retries):
         try:
             r = requests.get(url, params=params, timeout=10)
             if r.status_code == 200:
                 return r.json()
-            else:
-                logging.warning(f"Attempt {attempt+1}: HTTP {r.status_code} from {url}")
-        except Exception as e:
-            logging.warning(f"Attempt {attempt+1} failed: {e}")
-
-        if attempt < retries - 1:
-            wait = 2 ** attempt
-            logging.info(f"Retrying {url} in {wait}s...")
-            time.sleep(wait)
-
-    logging.error(f"All {retries} attempts failed for {url}")
+        except:
+            pass
+        time.sleep(1)
     return None
 
 
-def get_p2p_price(fiat, retries=3):
-    for attempt in range(retries):
-        try:
-            r = requests.post(
-                "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
-                json={
-                    "asset": "USDT",
-                    "fiat": fiat,
-                    "page": 1,
-                    "rows": 1,
-                    "tradeType": "BUY"
-                },
-                timeout=10
-            ).json()
+def get_p2p_price(fiat):
+    try:
+        r = requests.post(
+            "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
+            json={
+                "asset": "USDT",
+                "fiat": fiat,
+                "page": 1,
+                "rows": 1,
+                "tradeType": "BUY"
+            },
+            timeout=10
+        ).json()
 
-            if isinstance(r, dict) and r.get("data"):
-                return float(r["data"][0]["adv"]["price"])
-        except Exception as e:
-            logging.warning(f"P2P attempt {attempt+1} failed: {e}")
+        if isinstance(r, dict) and r.get("data"):
+            return float(r["data"][0]["adv"]["price"])
+    except:
+        pass
 
-        if attempt < retries - 1:
-            wait = 2 ** attempt
-            time.sleep(wait)
-
-    logging.error(f"P2P price for {fiat} not available")
     return None
 
 
@@ -101,15 +88,12 @@ def fetch_rates():
     if not crypto:
         return None
 
-    rub = get_p2p_price("RUB")
-    cny = get_p2p_price("CNY")
-
     return {
         "btc": float(crypto["bitcoin"]["usd"]),
         "eth": float(crypto["ethereum"]["usd"]),
         "ton": float(crypto["the-open-network"]["usd"]),
-        "rub": rub if rub else cache.get("rub", 90),
-        "cny": cny if cny else cache.get("cny", 7.2),
+        "rub": get_p2p_price("RUB") or cache.get("rub", 90),
+        "cny": get_p2p_price("CNY") or cache.get("cny", 7.2),
     }
 
 
@@ -130,20 +114,20 @@ def get_top_movers():
             return []
 
         movers = []
-        for coin in data:
-            ch = coin.get("price_change_percentage_1h_in_currency")
-            if ch is None or ch <= 0:
-                continue  # только рост
+        for c in data:
+            ch = c.get("price_change_percentage_1h_in_currency")
+            if ch is None:
+                continue
 
             movers.append({
-                "symbol": coin.get("symbol", "").upper(),
+                "symbol": c.get("symbol", "").upper(),
                 "change": float(ch)
             })
 
-        movers.sort(key=lambda x: x["change"], reverse=True)
+        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
         return movers[:5]
-    except Exception as e:
-        logging.error(f"get_top_movers error: {e}")
+
+    except:
         return []
 
 
@@ -155,11 +139,9 @@ def pct(new, old):
 
 def format_price(name, value):
     if name in ["BTC", "ETH"]:
-        # С запятой после тысяч, без десятичных знаков
         return f"{value:,.0f}"
-    else:
-        # TON, USD→RUB, USD→CNY - с точкой
-        return f"{value:.2f}".replace(",", ".")
+    return f"{value:.2f}".replace(",", ".")
+
 
 def line(sym, name, value, old, suffix=""):
     price = format_price(name, value)
@@ -181,7 +163,7 @@ def build_text():
     if not cache:
         return "📊 Loading..."
 
-    prev = prev_cache if prev_cache else cache
+    prev = prev_cache or cache
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
@@ -201,16 +183,17 @@ def build_top():
         return "🚀 TOP MOVERS\n\nНет данных"
 
     text = "🚀 TOP MOVERS (1h)\n\n"
+
     for m in movers:
-        sign = "+"
-        icon = "🟢"
+        sign = "+" if m["change"] > 0 else ""
+        icon = "🟢" if m["change"] > 0 else "🔴"
         text += f"{m['symbol']} {sign}{m['change']:.2f}% {icon}\n"
 
     text += "\n📌 @bi11ionaire"
     return text
 
 
-# ==================== ФОНОВЫЕ ЗАДАЧИ ====================
+# ==================== TASKS ====================
 async def updater():
     global cache, prev_cache
     while True:
@@ -219,9 +202,6 @@ async def updater():
             if cache:
                 prev_cache = cache.copy()
             cache = data
-            logging.info("Rates updated")
-        else:
-            logging.warning("Failed to fetch rates")
         await asyncio.sleep(UPDATE_INTERVAL)
 
 
@@ -231,17 +211,8 @@ async def market_poster():
         if cache:
             text = build_text()
             if text != last_market_post:
-                try:
-                    await bot.send_message(
-                        CHANNEL_ID,
-                        text,
-                        parse_mode="HTML",
-                        disable_web_page_preview=True
-                    )
-                    last_market_post = text
-                    logging.info("Market post sent")
-                except Exception as e:
-                    logging.error(f"Failed to send market post: {e}")
+                await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+                last_market_post = text
         await asyncio.sleep(MARKET_POST_INTERVAL)
 
 
@@ -250,30 +221,21 @@ async def top_poster():
     while True:
         text = build_top()
         if text != last_top_post:
-            try:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    text,
-                    disable_web_page_preview=True
-                )
-                last_top_post = text
-                logging.info("TOP post sent")
-            except Exception as e:
-                logging.error(f"Failed to send TOP post: {e}")
+            await bot.send_message(CHANNEL_ID, text)
+            last_top_post = text
         await asyncio.sleep(TOP_POST_INTERVAL)
 
 
 async def keepalive():
     while True:
-        await asyncio.sleep(240)  # каждые 4 минуты
+        await asyncio.sleep(240)
         try:
             await bot.get_me()
-            logging.debug("Keepalive ping")
-        except Exception as e:
-            logging.warning(f"Keepalive failed: {e}")
+        except:
+            pass
 
 
-# ==================== ОБРАБОТЧИКИ КОМАНД ====================
+# ==================== HANDLERS ====================
 @dp.message_handler(commands=["start"])
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
@@ -281,36 +243,22 @@ async def start(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
-    await m.answer(
-        build_text(),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=inline_kb
-    )
+    await m.answer(build_text(), parse_mode="HTML", reply_markup=inline_kb)
 
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer(
-        build_top(),
-        disable_web_page_preview=True
-    )
+    await m.answer(build_top())
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
     await c.answer()
-    await c.message.edit_text(
-        build_text(),
-        parse_mode="HTML",
-        reply_markup=inline_kb,
-        disable_web_page_preview=True
-    )
+    await c.message.edit_text(build_text(), parse_mode="HTML", reply_markup=inline_kb)
 
 
-# ==================== ЗАПУСК ====================
+# ==================== START ====================
 async def on_startup(_):
-    logging.info("Bot started")
     asyncio.create_task(updater())
     asyncio.create_task(market_poster())
     asyncio.create_task(top_poster())
