@@ -98,8 +98,8 @@ def build_market_text():
         f"₿ {format_line('BTC', cache['btc'], prev_cache['btc'], is_high_value=True)}\n"
         f"Ξ {format_line('ETH', cache['eth'], prev_cache['eth'], is_high_value=True)}\n"
         f"▽ {format_line('TON', cache['ton'], prev_cache['ton'])}\n\n"
-        f"💵 {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
-        f"🇨🇳 {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
+        f" {format_line('USD→RUB', cache['rub'], prev_cache['rub'], ' ₽')}\n"
+        f" {format_line('USD→CNY', cache['cny'], prev_cache['cny'], ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
