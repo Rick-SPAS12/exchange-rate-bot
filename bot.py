@@ -147,7 +147,7 @@ def build_top():
         text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
 
     # 🔥 твоя ссылка сохраняется
-    text += "\n📌 @CryptoBot"
+    text += "\n📌 @bi11ionaire"
     return text
 
 # ---------- MARKET LOOP ----------
@@ -230,9 +230,8 @@ def build_text():
         f"{format_line('▽','TON', cache['ton'], p.get('ton'))}\n\n"
         f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
         f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
-        "📌 @CryptoBot"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
-
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
