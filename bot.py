@@ -16,8 +16,8 @@ dp = Dispatcher(bot)
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
-cache = None
-prev_cache = None
+cache = {}
+prev_cache = {}
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -27,14 +27,14 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
-# ---------- SAFE REQUEST ----------
+# ---------- SAFE GET ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
         if r.status_code == 200:
             return r.json()
-    except:
-        pass
+    except Exception as e:
+        print("SAFE_GET ERROR:", e)
     return None
 
 # ---------- P2P ----------
@@ -54,11 +54,13 @@ def get_p2p_price(fiat):
 
         if isinstance(r, dict) and r.get("data"):
             return float(r["data"][0]["adv"]["price"])
-    except:
-        pass
+
+    except Exception as e:
+        print("P2P ERROR:", e)
+
     return None
 
-# ---------- MARKET ----------
+# ---------- FETCH ----------
 def fetch_rates():
     global cache
 
@@ -87,11 +89,11 @@ def fetch_rates():
         "btc": float(btc),
         "eth": float(eth),
         "ton": float(ton),
-        "rub": float(rub or (cache or {}).get("rub", 90)),
-        "cny": float(cny or (cache or {}).get("cny", 7.2)),
+        "rub": float(rub or cache.get("rub", 90)),
+        "cny": float(cny or cache.get("cny", 7.2)),
     }
 
-# ---------- MOVERS ----------
+# ---------- TOP MOVERS ----------
 def get_top_movers():
     try:
         r = safe_get(
@@ -111,46 +113,47 @@ def get_top_movers():
         movers = []
 
         for c in r:
-            change = c.get("price_change_percentage_1h_in_currency")
-            if change is None:
+            ch = c.get("price_change_percentage_1h_in_currency")
+            if ch is None:
                 continue
 
             movers.append({
                 "symbol": c.get("symbol", "").upper(),
-                "change": float(change)
+                "change": float(ch)
             })
 
         movers.sort(key=lambda x: abs(x["change"]), reverse=True)
         return movers[:5]
 
-    except:
+    except Exception as e:
+        print("MOVERS ERROR:", e)
         return []
 
-# ---------- TOP ----------
+# ---------- TOP TEXT ----------
 def build_top():
     movers = get_top_movers()
 
     text = "🚀 TOP MOVERS (1h)\n\n"
 
     for m in movers:
-        change = m["change"]
+        ch = m["change"]
 
-        if change > 0:
+        if ch > 0:
             icon = "🟢"
             sign = "+"
-        elif change < 0:
+        elif ch < 0:
             icon = "🔴"
             sign = ""
         else:
             icon = "⚪"
             sign = ""
 
-        text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
+        text += f"{m['symbol']} {sign}{ch:.2f}% {icon}\n"
 
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- LOOP MARKET ----------
+# ---------- PRICE LOOP ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -161,16 +164,17 @@ async def live_updater():
             if data:
                 prev_cache = cache.copy() if cache else data
                 cache = data
-                print("📊 MARKET UPDATED")
+
+                print("UPDATED RATES OK")
 
         except Exception as e:
-            print("UPDATE ERROR:", e)
+            print("UPDATE LOOP ERROR:", e)
 
         await asyncio.sleep(300)
 
-# ---------- LOOP TOP ----------
+# ---------- TOP LOOP ----------
 async def movers_poster():
-    last = None
+    last = ""
 
     while True:
         try:
@@ -183,10 +187,9 @@ async def movers_poster():
                     disable_web_page_preview=True
                 )
                 last = text
-                print("🚀 TOP POSTED")
 
         except Exception as e:
-            print("MOVERS ERROR:", e)
+            print("TOP LOOP ERROR:", e)
 
         await asyncio.sleep(3600)
 
@@ -196,49 +199,49 @@ def pct(new, old):
         return 0
     return ((new - old) / old) * 100
 
-def format_price(name, value):
+def fmt(name, value):
     if name == "TON":
         return f"{value:.2f}"
-    elif name in ["BTC", "ETH"]:
+    if name in ["BTC", "ETH"]:
         return f"{value:,.0f}"
     return f"{value:.2f}"
 
-def format_line(symbol, name, value, old, suffix=""):
-    price = format_price(name, value)
+def line(sym, name, value, old, suffix=""):
+    price = fmt(name, value)
 
     if not old:
-        return f"{symbol} {name}: {price}{suffix}"
+        return f"{sym} {name}: {price}{suffix}"
 
-    change = pct(value, old)
+    ch = pct(value, old)
 
     if value > old:
-        return f"{symbol} {name}: {price}{suffix} (+{change:.2f}%) 🟢"
+        return f"{sym} {name}: {price}{suffix} (+{ch:.2f}%) 🟢"
     elif value < old:
-        return f"{symbol} {name}: {price}{suffix} ({change:.2f}%) 🔴"
-    else:
-        return f"{symbol} {name}: {price}{suffix}"
+        return f"{sym} {name}: {price}{suffix} ({ch:.2f}%) 🔴"
 
-# ---------- TEXT ----------
+    return f"{sym} {name}: {price}{suffix}"
+
+# ---------- MAIN TEXT ----------
 def build_text():
     if not cache:
-        return "📊 Loading market data..."
+        return "📊 Loading..."
 
     p = prev_cache or cache
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{format_line('₿','BTC', cache['btc'], p.get('btc'))}\n"
-        f"{format_line('Ξ','ETH', cache['eth'], p.get('eth'))}\n"
-        f"{format_line('▽','TON', cache['ton'], p.get('ton'))}\n\n"
-        f"{format_line('', 'USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
-        f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
+        f"{line('₿','BTC',cache['btc'],p.get('btc'))}\n"
+        f"{line('Ξ','ETH',cache['eth'],p.get('eth'))}\n"
+        f"{line('▽','TON',cache['ton'],p.get('ton'))}\n\n"
+        f"{line('💵','USD→RUB',cache['rub'],p.get('rub'),' ₽')}\n"
+        f"{line('🇨🇳','USD→CNY',cache['cny'],p.get('cny'),' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    await message.answer("Choose option 👇", reply_markup=keyboard)
+    await message.answer("Choose:", reply_markup=keyboard)
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(message: types.Message):
@@ -250,7 +253,7 @@ async def rates(message: types.Message):
     )
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
-async def top_button(message: types.Message):
+async def top(message: types.Message):
     await message.answer(build_top(), disable_web_page_preview=True)
 
 @dp.callback_query_handler(lambda c: c.data == "update")
@@ -263,11 +266,9 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- STARTUP ----------
+# ---------- START ----------
 async def on_startup(_):
     global cache, prev_cache
-
-    print("BOT STARTED")
 
     data = fetch_rates()
     if data:
@@ -279,8 +280,4 @@ async def on_startup(_):
 
 # ---------- RUN ----------
 if __name__ == "__main__":
-    executor.start_polling(
-        dp,
-        skip_updates=True,
-        on_startup=on_startup
-    )
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
