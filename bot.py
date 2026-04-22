@@ -30,7 +30,7 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates")
 
-# ---------- SAFE GET ----------
+# ---------- SAFE REQUEST ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
@@ -114,7 +114,6 @@ def get_top_movers():
 
         for c in r:
             change = c.get("price_change_percentage_1h_in_currency")
-
             if change is None:
                 continue
 
@@ -129,7 +128,7 @@ def get_top_movers():
     except:
         return []
 
-# ---------- MARKET LOOP ----------
+# ---------- MARKET LOOP (5 min) ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -146,7 +145,7 @@ async def live_updater():
 
         await asyncio.sleep(300)
 
-# ---------- MOVERS LOOP ----------
+# ---------- MOVERS LOOP (1 hour) ----------
 async def movers_poster():
     last = ""
 
@@ -155,7 +154,7 @@ async def movers_poster():
             movers = get_top_movers()
 
             if not movers:
-                await asyncio.sleep(60)
+                await asyncio.sleep(3600)
                 continue
 
             text = "🚀 TOP MOVERS (1h)\n\n"
@@ -166,11 +165,17 @@ async def movers_poster():
                 if change > 0:
                     icon = "🟢"
                     sign = "+"
-                else:
+                elif change < 0:
                     icon = "🔴"
+                    sign = ""
+                else:
+                    icon = "⚪"
                     sign = ""
 
                 text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
+
+            # 📌 канал всегда последней строкой
+            text += "\n📌 @bi11ionaire"
 
             if text != last:
                 await bot.send_message(CHANNEL_ID, text)
@@ -194,21 +199,20 @@ def format_price(name, value):
         return f"{value:,.0f}"
     return f"{value:.2f}"
 
-def format_line(name, value, old, suffix=""):
+def format_line(symbol, name, value, old, suffix=""):
     price = format_price(name, value)
 
     if not old:
-        return f"{name}: {price}{suffix}"
+        return f"{symbol} {name}: {price}{suffix}"
 
     change = pct(value, old)
 
-    if value == old:
-        return f"{name}: {price}{suffix}"
-
     if value > old:
-        return f"{name}: {price}{suffix} (+{change:.2f}%) 🟢"
-
-    return f"{name}: {price}{suffix} ({change:.2f}%) 🔴"
+        return f"{symbol} {name}: {price}{suffix} (+{change:.2f}%) 🟢"
+    elif value < old:
+        return f"{symbol} {name}: {price}{suffix} ({change:.2f}%) 🔴"
+    else:
+        return f"{symbol} {name}: {price}{suffix}"
 
 # ---------- TEXT ----------
 def build_text():
@@ -219,11 +223,11 @@ def build_text():
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"₿ {format_line('BTC', cache['btc'], p.get('btc'))}\n"
-        f"Ξ {format_line('ETH', cache['eth'], p.get('eth'))}\n"
-        f"▽ {format_line('TON', cache['ton'], p.get('ton'))}\n\n"
-        f" {format_line('USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
-        f" {format_line('USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
+        f"{format_line('₿','BTC', cache['btc'], p.get('btc'))}\n"
+        f"{format_line('Ξ','ETH', cache['eth'], p.get('eth'))}\n"
+        f"{format_line('▽','TON', cache['ton'], p.get('ton'))}\n\n"
+        f"{format_line('💵','USD→RUB', cache['rub'], p.get('rub'), ' ₽')}\n"
+        f"{format_line('🇨🇳','USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
@@ -244,7 +248,6 @@ async def rates(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(callback: types.CallbackQuery):
     await callback.answer()
-
     await callback.message.edit_text(
         build_text(),
         reply_markup=inline_kb,
@@ -252,7 +255,7 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- STARTUP ----------
+# ---------- START ----------
 async def on_startup(_):
     global cache, prev_cache
 
