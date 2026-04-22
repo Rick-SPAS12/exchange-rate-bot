@@ -24,7 +24,6 @@ inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
-# ✅ FIX: TOP теперь рядом с Exchange rates
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
@@ -57,7 +56,6 @@ def get_p2p_price(fiat):
             return float(r["data"][0]["adv"]["price"])
     except:
         pass
-
     return None
 
 # ---------- MARKET ----------
@@ -79,6 +77,9 @@ def fetch_rates():
     eth = crypto.get("ethereum", {}).get("usd")
     ton = crypto.get("the-open-network", {}).get("usd")
 
+    if btc is None or eth is None or ton is None:
+        return None
+
     rub = get_p2p_price("RUB")
     cny = get_p2p_price("CNY")
 
@@ -90,7 +91,7 @@ def fetch_rates():
         "cny": float(cny or (cache or {}).get("cny", 7.2)),
     }
 
-# ---------- TOP MOVERS ----------
+# ---------- MOVERS ----------
 def get_top_movers():
     try:
         r = safe_get(
@@ -125,7 +126,7 @@ def get_top_movers():
     except:
         return []
 
-# ---------- TOP TEXT ----------
+# ---------- TOP ----------
 def build_top():
     movers = get_top_movers()
 
@@ -146,11 +147,10 @@ def build_top():
 
         text += f"{m['symbol']} {sign}{change:.2f}% {icon}\n"
 
-    # 🔥 твоя ссылка сохраняется
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- MARKET LOOP ----------
+# ---------- LOOP MARKET ----------
 async def live_updater():
     global cache, prev_cache
 
@@ -161,13 +161,14 @@ async def live_updater():
             if data:
                 prev_cache = cache.copy() if cache else data
                 cache = data
+                print("📊 MARKET UPDATED")
 
-        except:
-            pass
+        except Exception as e:
+            print("UPDATE ERROR:", e)
 
         await asyncio.sleep(300)
 
-# ---------- TOP LOOP ----------
+# ---------- LOOP TOP ----------
 async def movers_poster():
     last = None
 
@@ -179,9 +180,10 @@ async def movers_poster():
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
-                    disable_web_page_preview=True  # 🚫 без предпросмотра
+                    disable_web_page_preview=True
                 )
                 last = text
+                print("🚀 TOP POSTED")
 
         except Exception as e:
             print("MOVERS ERROR:", e)
@@ -216,7 +218,7 @@ def format_line(symbol, name, value, old, suffix=""):
     else:
         return f"{symbol} {name}: {price}{suffix}"
 
-# ---------- MAIN TEXT ----------
+# ---------- TEXT ----------
 def build_text():
     if not cache:
         return "📊 Loading market data..."
@@ -232,6 +234,7 @@ def build_text():
         f"{format_line('', 'USD→CNY', cache['cny'], p.get('cny'), ' ¥')}\n\n"
         '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
+
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
@@ -243,7 +246,7 @@ async def rates(message: types.Message):
         build_text(),
         reply_markup=inline_kb,
         parse_mode="HTML",
-        disable_web_page_preview=True  # 🚫 убрал превью
+        disable_web_page_preview=True
     )
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
@@ -260,9 +263,11 @@ async def update(callback: types.CallbackQuery):
         disable_web_page_preview=True
     )
 
-# ---------- START ----------
+# ---------- STARTUP ----------
 async def on_startup(_):
     global cache, prev_cache
+
+    print("BOT STARTED")
 
     data = fetch_rates()
     if data:
