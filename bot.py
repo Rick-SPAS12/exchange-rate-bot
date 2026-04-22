@@ -1,7 +1,6 @@
 import os
 import asyncio
 import requests
-import time
 import logging
 
 from aiogram import Bot, Dispatcher, types
@@ -40,7 +39,7 @@ inline_kb = InlineKeyboardMarkup().add(
 # ==================== REQUESTS ====================
 def safe_get(url, params=None):
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=7)
         return r.json() if r.status_code == 200 else None
     except:
         return None
@@ -57,7 +56,7 @@ def get_p2p_price(fiat):
                 "rows": 1,
                 "tradeType": "BUY"
             },
-            timeout=10
+            timeout=7
         ).json()
 
         return float(r["data"][0]["adv"]["price"])
@@ -132,6 +131,7 @@ def line(sym, name, value, old, suffix=""):
     return f"{sym} {name}: {value:.2f}{suffix}"
 
 
+# ==================== TEXT ====================
 def build_market():
     if not cache:
         return "📊 Loading..."
@@ -178,30 +178,13 @@ async def updater():
         await asyncio.sleep(UPDATE_INTERVAL)
 
 
-async def market_post():
-    while True:
-        if cache:
-            try:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    build_market(),
-                    parse_mode="HTML"
-                )
-            except:
-                pass
-
-        await asyncio.sleep(UPDATE_INTERVAL)
-
-
 async def top_post():
     while True:
-        text = build_top()
-
         try:
             await bot.send_animation(
                 CHANNEL_ID,
                 animation=GIF_ID,
-                caption=text
+                caption=build_top()
             )
         except Exception as e:
             logging.error(e)
@@ -217,7 +200,12 @@ async def start(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
-    await m.answer(build_market(), parse_mode="HTML", reply_markup=inline_kb)
+    await m.answer(
+        build_market(),
+        parse_mode="HTML",
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
+    )
 
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
@@ -231,14 +219,14 @@ async def update(c: types.CallbackQuery):
     await c.message.edit_text(
         build_market(),
         parse_mode="HTML",
-        reply_markup=inline_kb
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
     )
 
 
 # ==================== START ====================
 async def on_startup(_):
     asyncio.create_task(updater())
-    asyncio.create_task(market_post())
     asyncio.create_task(top_post())
 
 
