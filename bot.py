@@ -6,21 +6,19 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
-
-# Логи в консоли Railway покажут, если API CoinGecko тебя забанит за частые запросы
-logging.basicConfig(level=logging.INFO)
+from aiogram.utils.exceptions import MessageNotModified
 
 # ---------- CONFIG ----------
-API_TOKEN = os.getenv("API_TOKEN") # Настрой в Variables на Railway
+API_TOKEN = os.getenv("API_TOKEN") or "ТВОЙ_ТОКЕН_ТУТ"
 CHANNEL_ID = "@bi11ionaire"
 GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOwQ"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-cache = {}
-prev_cache = {}
-last_market_post = ""
+# ---------- CACHE ----------
+cache = None
+prev_cache = None
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
@@ -30,59 +28,50 @@ inline_kb = InlineKeyboardMarkup().add(
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 keyboard.add("📊 Exchange rates", "🚀 TOP")
 
-# ---------- API FUNCTIONS ----------
-def get_top_movers_logic():
-    """Чистая логика запроса к API"""
+# ---------- API LOGIC ----------
+def safe_get(url, params=None):
     try:
-        url = "https://api.coingecko.com/api/v3/coins/markets"
-        params = {
-            "vs_currency": "usd",
-            "order": "market_cap_desc",
-            "per_page": 50,
-            "page": 1,
-            "price_change_percentage": "1h"
-        }
-        r = requests.get(url, params=params, timeout=10)
-        if r.status_code != 200:
-            return []
-        
-        data = r.json()
-        movers = []
-        for c in data:
-            ch = c.get("price_change_percentage_1h_in_currency")
-            if ch is not None:
-                movers.append({
-                    "symbol": c.get("symbol", "").upper(),
-                    "change": float(ch)
-                })
-        
-        # Сортировка по силе движения (модуль числа)
-        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
-        return movers[:5]
-    except Exception as e:
-        logging.error(f"API Error: {e}")
-        return []
+        r = requests.get(url, params=params, timeout=8)
+        return r.json()
+    except:
+        return None
+
+def get_p2p_price(fiat):
+    try:
+        r = requests.post(
+            "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
+            json={"asset": "USDT", "fiat": fiat, "page": 1, "rows": 1, "tradeType": "BUY"},
+            timeout=8
+        ).json()
+        return float(r["data"][0]["adv"]["price"]) if r.get("data") else None
+    except:
+        return None
 
 def fetch_rates():
-    try:
-        crypto_url = "https://api.coingecko.com/api/v3/simple/price"
-        params = {"ids": "bitcoin,ethereum,the-open-network", "vs_currencies": "usd"}
-        crypto = requests.get(crypto_url, params=params, timeout=10).json()
-        
-        # P2P Binance (упрощенно для стабильности)
-        def p2p(fiat):
-            res = requests.post("https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
-                                json={"asset":"USDT","fiat":fiat,"page":1,"rows":1,"tradeType":"BUY"}, timeout=10).json()
-            return float(res["data"][0]["adv"]["price"]) if res.get("data") else None
+    crypto = safe_get("https://api.coingecko.com/api/v3/simple/price", 
+                      params={"ids": "bitcoin,ethereum,the-open-network", "vs_currencies": "usd"})
+    if not crypto: return cache
 
-        return {
-            "btc": float(crypto["bitcoin"]["usd"]),
-            "eth": float(crypto["ethereum"]["usd"]),
-            "ton": float(crypto["the-open-network"]["usd"]),
-            "rub": p2p("RUB") or cache.get("rub", 90),
-            "cny": p2p("CNY") or cache.get("cny", 7.2),
-        }
-    except: return None
+    rub = get_p2p_price("RUB") or (cache["rub"] if cache else 90)
+    cny = get_p2p_price("CNY") or (cache["cny"] if cache else 7.2)
+
+    return {
+        "btc": float(crypto["bitcoin"]["usd"]),
+        "eth": float(crypto["ethereum"]["usd"]),
+        "ton": float(crypto["the-open-network"]["usd"]),
+        "rub": rub,
+        "cny": cny,
+    }
+
+def get_top_movers():
+    try:
+        r = safe_get("https://api.coingecko.com/api/v3/coins/markets",
+                     params={"vs_currency": "usd", "order": "market_cap_desc", "per_page": 50, "page": 1, "price_change_percentage": "1h"})
+        if not r: return []
+        movers = [{"symbol": c["symbol"].upper(), "change": float(c["price_change_percentage_1h_in_currency"] or 0)} for c in r]
+        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
+        return movers[:5]
+    except: return []
 
 # ---------- FORMATTING ----------
 def pct(new, old):
@@ -90,44 +79,38 @@ def pct(new, old):
     return ((new - old) / old) * 100
 
 def format_price(name, value):
-    if name in ["BTC", "ETH"]: return f"{value:,.0f}"
+    if "BTC" in name or "ETH" in name: return f"{value:,.0f}"
     return f"{value:.2f}"
 
-def line(sym, name, value, old):
-    price = format_price(name, value)
-    if "RUB" in name: d_name = f"{name}: {price}₽"
-    elif "CNY" in name: d_name = f"{name}: {price}¥"
-    else: d_name = f"{sym} {name}: {price}"
+def format_line(name, value, old, suffix=""):
+    change = pct(value, old) if old else 0
+    if abs(change) < 0.01: icon, sign = "⚪", ""
+    elif change > 0: icon, sign = "🟢", "+"
+    else: icon, sign = "🔴", ""
     
-    if not old: return d_name
-    ch = pct(value, old)
-    if ch > 0.01: return f"{d_name} (+{ch:.2f}%) 🟢"
-    elif ch < -0.01: return f"{d_name} ({ch:.2f}%) 🔴"
-    return d_name
+    return f"{name}: {format_price(name, value)}{suffix} ({sign}{change:.2f}%) {icon}"
 
-# ---------- TEXT BUILDERS ----------
+# ---------- TEXTS ----------
 def build_text():
-    if not cache: return "📊 Loading..."
-    p = prev_cache or cache
+    if not cache: return "📊 Market loading..."
+    p = prev_cache if prev_cache else cache
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
-        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
-        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
-        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']))}\n"
-        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']))}\n\n"
-        "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
+        f"₿ {format_line('BTC', cache['btc'], p['btc'])}\n"
+        f"Ξ {format_line('ETH', cache['eth'], p['eth'])}\n"
+        f"▽ {format_line('TON', cache['ton'], p['ton'])}\n\n"
+        f" {format_line('USD→RUB', cache['rub'], p['rub'], ' ₽')}\n"
+        f" {format_line('USD→CNY', cache['cny'], p['cny'], ' ¥')}\n\n"
+        '📌 <a href="https://t.me/send?start=r-x4zoa">@CryptoBot</a>'
     )
 
-async def build_top_async():
-    loop = asyncio.get_event_loop()
-    movers = await loop.run_in_executor(None, get_top_movers_logic)
-    
+def build_top_text():
+    movers = get_top_movers()
     if not movers: return "🚀 TOP MOVERS\n\nНет данных"
     text = "🚀 <b>TOP MOVERS (1h)</b>\n\n"
     for m in movers:
-        icon = "🟢" if m["change"] > 0 else "🔴"
-        sign = "+" if m["change"] > 0 else ""
+        sign = "+" if m['change'] > 0 else ""
+        icon = "🟢" if m['change'] > 0 else "🔴"
         text += f"<code>{m['symbol']}</code> {sign}{m['change']:.2f}% {icon}\n"
     text += "\n📌 @bi11ionaire"
     return text
@@ -135,59 +118,64 @@ async def build_top_async():
 # ---------- HANDLERS ----------
 @dp.message_handler(commands=["start"])
 async def start(m: types.Message):
-    await m.answer("Choose:", reply_markup=keyboard)
+    await m.answer("Choose option 👇", reply_markup=keyboard)
 
-@dp.message_handler(lambda m: m.text and "Exchange" in m.text)
-async def rates_handler(m: types.Message):
-    await m.answer(build_text(), parse_mode="HTML", disable_web_page_preview=True, reply_markup=inline_kb)
+@dp.message_handler(lambda m: "Exchange rates" in m.text)
+async def rates(m: types.Message):
+    await m.answer(build_text(), reply_markup=inline_kb, parse_mode="HTML", disable_web_page_preview=True)
 
-@dp.message_handler(lambda m: m.text and "TOP" in m.text)
-async def top_handler(m: types.Message):
-    # Теперь бот не зависнет при нажатии
-    text = await build_top_async()
+@dp.message_handler(lambda m: "TOP" in m.text)
+async def top_btn(m: types.Message):
+    text = build_top_text()
     await m.answer_animation(GIF_ID, caption=text, parse_mode="HTML")
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update_cb(c: types.CallbackQuery):
     try:
-        await c.message.edit_text(build_text(), parse_mode="HTML", reply_markup=inline_kb, disable_web_page_preview=True)
-    except: pass
+        await c.message.edit_text(build_text(), reply_markup=inline_kb, parse_mode="HTML", disable_web_page_preview=True)
+    except MessageNotModified: pass
     await c.answer()
 
-# ---------- BACKGROUND TASKS ----------
-async def updater():
+# ---------- LOOPS ----------
+async def live_updater():
     global cache, prev_cache
     while True:
-        loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, fetch_rates)
-        if data:
-            prev_cache = cache.copy() if cache else data
-            cache = data
         await asyncio.sleep(150)
+        data = fetch_rates()
+        if data:
+            prev_cache = cache.copy()
+            cache = data
 
-async def market_poster():
-    global last_market_post
+async def channel_poster():
+    last_text = ""
     while True:
         await asyncio.sleep(300)
         if cache:
             text = build_text()
-            if text != last_market_post:
+            if text != last_text:
                 try:
                     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML", disable_web_page_preview=True)
-                    last_market_post = text
+                    last_text = text
                 except: pass
 
 async def top_poster():
     while True:
         await asyncio.sleep(3600)
-        text = await build_top_async()
         try:
+            text = build_top_text()
             await bot.send_animation(CHANNEL_ID, GIF_ID, caption=text, parse_mode="HTML")
         except: pass
 
+# ---------- STARTUP ----------
 async def on_startup(_):
-    asyncio.create_task(updater())
-    asyncio.create_task(market_poster())
+    global cache, prev_cache
+    data = fetch_rates()
+    if data:
+        cache = data
+        prev_cache = data.copy()
+    
+    asyncio.create_task(live_updater())
+    asyncio.create_task(channel_poster())
     asyncio.create_task(top_poster())
 
 if __name__ == "__main__":
