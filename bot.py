@@ -12,32 +12,28 @@ API_TOKEN = os.getenv("API_TOKEN") or "PASTE_YOUR_TOKEN_HERE"
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# ---------- CHANNEL ----------
 CHANNEL_ID = "@bi11ionaire"
 
 # ---------- CACHE ----------
 cache = {}
 prev_cache = {}
-last_market_post = ""
-last_top_post = ""
 
 # ---------- UI ----------
 inline_kb = InlineKeyboardMarkup().add(
     InlineKeyboardButton("🔄 Update", callback_data="update")
 )
 
+# ⚡ ВАЖНО: теперь кнопка более стабильная
 keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-keyboard.add("📊 Exchange rates", "🚀 TOP")
+keyboard.add("📊 Exchange", "🚀 TOP")
 
-# ---------- SAFE REQUEST ----------
+# ---------- REQUEST ----------
 def safe_get(url, params=None):
     try:
         r = requests.get(url, params=params, timeout=10)
-        if r.status_code == 200:
-            return r.json()
+        return r.json()
     except:
-        pass
-    return None
+        return None
 
 # ---------- P2P ----------
 def get_p2p_price(fiat):
@@ -54,11 +50,9 @@ def get_p2p_price(fiat):
             timeout=10
         ).json()
 
-        if isinstance(r, dict) and r.get("data"):
-            return float(r["data"][0]["adv"]["price"])
+        return float(r["data"][0]["adv"]["price"])
     except:
-        pass
-    return None
+        return None
 
 # ---------- MARKET ----------
 def fetch_rates():
@@ -82,7 +76,7 @@ def fetch_rates():
     }
 
 # ---------- TOP ----------
-def get_top_movers():
+def get_top():
     try:
         r = safe_get(
             "https://api.coingecko.com/api/v3/coins/markets",
@@ -95,22 +89,15 @@ def get_top_movers():
             }
         )
 
-        if not isinstance(r, list):
-            return []
-
         movers = []
-
         for c in r:
             ch = c.get("price_change_percentage_1h_in_currency")
             if ch is None:
                 continue
 
-            movers.append({
-                "symbol": c.get("symbol", "").upper(),
-                "change": float(ch)
-            })
+            movers.append((c["symbol"].upper(), float(ch)))
 
-        movers.sort(key=lambda x: abs(x["change"]), reverse=True)
+        movers.sort(key=lambda x: abs(x[1]), reverse=True)
         return movers[:5]
 
     except:
@@ -122,18 +109,18 @@ def pct(new, old):
         return 0
     return ((new - old) / old) * 100
 
-def line(sym, name, value, old):
+def line(sym, name, value, old, suffix=""):
     if not old:
-        return f"{sym} {name}: {value:.2f}"
+        return f"{sym} {name}: {value:.2f}{suffix}"
 
     ch = pct(value, old)
 
     if value > old:
-        return f"{sym} {name}: {value:.2f} (+{ch:.2f}%) 🟢"
+        return f"{sym} {name}: {value:.2f}{suffix} (+{ch:.2f}%) 🟢"
     elif value < old:
-        return f"{sym} {name}: {value:.2f} ({ch:.2f}%) 🔴"
+        return f"{sym} {name}: {value:.2f}{suffix} ({ch:.2f}%) 🔴"
 
-    return f"{sym} {name}: {value:.2f}"
+    return f"{sym} {name}: {value:.2f}{suffix}"
 
 # ---------- TEXT ----------
 def build_text():
@@ -144,33 +131,29 @@ def build_text():
 
     return (
         "<b>📊 LIVE MARKET</b>\n\n"
-        f"{line('₿','BTC',cache['btc'],p.get('btc', cache['btc']))}\n"
-        f"{line('Ξ','ETH',cache['eth'],p.get('eth', cache['eth']))}\n"
-        f"{line('▽','TON',cache['ton'],p.get('ton', cache['ton']))}\n\n"
-        f"{line('','USD→RUB',cache['rub'],p.get('rub', cache['rub']), ' ₽')}\n"
-        f"{line('','USD→CNY',cache['cny'],p.get('cny', cache['cny']), ' ¥')}\n\n"
+        f"{line('₿','BTC',cache['btc'],p.get('btc'))}\n"
+        f"{line('Ξ','ETH',cache['eth'],p.get('eth'))}\n"
+        f"{line('▽','TON',cache['ton'],p.get('ton'))}\n\n"
+        f"{line('','USD→RUB',cache['rub'],p.get('rub'), ' ₽')}\n"
+        f"{line('','USD→CNY',cache['cny'],p.get('cny'), ' ¥')}\n\n"
         "📌 <a href='https://t.me/send?start=r-x4zoa'>@CryptoBot</a>"
     )
 
 # ---------- TOP TEXT ----------
 def build_top():
-    movers = get_top_movers()
-
-    if not movers:
-        return "🚀 TOP MOVERS\n\nНет данных"
+    data = get_top()
 
     text = "🚀 TOP MOVERS (1h)\n\n"
 
-    for m in movers:
-        ch = m["change"]
+    for sym, ch in data:
         icon = "🟢" if ch > 0 else "🔴"
         sign = "+" if ch > 0 else ""
-        text += f"{m['symbol']} {sign}{ch:.2f}% {icon}\n"
+        text += f"{sym} {sign}{ch:.2f}% {icon}\n"
 
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- LOOP MARKET ----------
+# ---------- LOOP ----------
 async def updater():
     global cache, prev_cache
 
@@ -182,35 +165,39 @@ async def updater():
 
         await asyncio.sleep(300)
 
-# ---------- POST MARKET ----------
+# ---------- MARKET POST ----------
 async def market_poster():
-    global last_market_post
+    last = ""
 
     while True:
         if cache:
             text = build_text()
 
-            if text != last_market_post:
+            if text != last:
                 await bot.send_message(
                     CHANNEL_ID,
                     text,
                     parse_mode="HTML",
                     disable_web_page_preview=True
                 )
-                last_market_post = text
+                last = text
 
         await asyncio.sleep(300)
 
-# ---------- POST TOP ----------
+# ---------- TOP POST ----------
 async def top_poster():
-    global last_top_post
+    last = ""
 
     while True:
         text = build_top()
 
-        if text != last_top_post:
-            await bot.send_message(CHANNEL_ID, text)
-            last_top_post = text
+        if text != last:
+            await bot.send_message(
+                CHANNEL_ID,
+                text,
+                disable_web_page_preview=True
+            )
+            last = text
 
         await asyncio.sleep(3600)
 
@@ -219,17 +206,17 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-# ✅ FIXED BUTTON (СТАБИЛЬНАЯ ВЕРСИЯ)
+# ✅ СТАБИЛЬНАЯ КНОПКА (НЕ ЛОМАЕТСЯ ОТ TELEGRAM)
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
         build_text(),
         parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=inline_kb
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
     )
 
-@dp.message_handler(lambda m: m.text == "🚀 TOP")
+@dp.message_handler(lambda m: m.text and "TOP" in m.text)
 async def top(m: types.Message):
     await m.answer(build_top())
 
