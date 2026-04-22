@@ -224,11 +224,18 @@ async def start(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "📊 Exchange rates")
 async def rates(m: types.Message):
-    await m.answer(build_text(), parse_mode="HTML", reply_markup=inline_kb)
-
+    await m.answer(
+    build_text(),
+    parse_mode="HTML",
+    disable_web_page_preview=True,
+    reply_markup=inline_kb
+)
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer(build_top())
+    await m.answer(
+    build_top(),
+    disable_web_page_preview=True
+)
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
