@@ -267,10 +267,17 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer(
-        build_top(),
-        disable_web_page_preview=True
-    )
+    try:
+        await m.answer_animation(
+            animation="AAMCAgADGQEAAUfLKWnoehUtSHIlUuoudSUAAXGrC1Y5HwAC7poAArqNeUr-AAHTZzocI4YBAAdtAAM7BA",
+            caption=build_top(),
+            disable_web_page_preview=True
+        )
+    except:
+        await m.answer(
+            build_top(),
+            disable_web_page_preview=True
+        )
 
 
 @dp.callback_query_handler(lambda c: c.data == "update")
