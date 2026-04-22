@@ -56,10 +56,8 @@ def get_p2p_price(fiat):
 
         if isinstance(r, dict) and r.get("data"):
             return float(r["data"][0]["adv"]["price"])
-
     except:
         pass
-
     return None
 
 # ---------- MARKET ----------
@@ -83,7 +81,7 @@ def fetch_rates():
         "cny": get_p2p_price("CNY") or cache.get("cny", 7.2),
     }
 
-# ---------- TOP MOVERS ----------
+# ---------- TOP ----------
 def get_top_movers():
     try:
         r = safe_get(
@@ -104,7 +102,6 @@ def get_top_movers():
 
         for c in r:
             ch = c.get("price_change_percentage_1h_in_currency")
-
             if ch is None:
                 continue
 
@@ -138,7 +135,7 @@ def line(sym, name, value, old):
 
     return f"{sym} {name}: {value:.2f}"
 
-# ---------- LIVE TEXT ----------
+# ---------- TEXT ----------
 def build_text():
     if not cache:
         return "📊 Loading..."
@@ -173,7 +170,7 @@ def build_top():
     text += "\n📌 @bi11ionaire"
     return text
 
-# ---------- LOOP ----------
+# ---------- LOOP MARKET ----------
 async def updater():
     global cache, prev_cache
 
@@ -185,7 +182,7 @@ async def updater():
 
         await asyncio.sleep(300)
 
-# ---------- MARKET POST ----------
+# ---------- POST MARKET ----------
 async def market_poster():
     global last_market_post
 
@@ -204,7 +201,7 @@ async def market_poster():
 
         await asyncio.sleep(300)
 
-# ---------- TOP POST ----------
+# ---------- POST TOP ----------
 async def top_poster():
     global last_top_post
 
@@ -222,7 +219,7 @@ async def top_poster():
 async def start(m: types.Message):
     await m.answer("Choose:", reply_markup=keyboard)
 
-# ✅ ИСПРАВЛЕНА ТОЛЬКО ЭТА КНОПКА
+# ✅ FIXED BUTTON (СТАБИЛЬНАЯ ВЕРСИЯ)
 @dp.message_handler(lambda m: m.text and "Exchange" in m.text)
 async def rates(m: types.Message):
     await m.answer(
@@ -234,10 +231,7 @@ async def rates(m: types.Message):
 
 @dp.message_handler(lambda m: m.text == "🚀 TOP")
 async def top(m: types.Message):
-    await m.answer(
-        build_top(),
-        disable_web_page_preview=True
-    )
+    await m.answer(build_top())
 
 @dp.callback_query_handler(lambda c: c.data == "update")
 async def update(c: types.CallbackQuery):
@@ -245,7 +239,8 @@ async def update(c: types.CallbackQuery):
     await c.message.edit_text(
         build_text(),
         parse_mode="HTML",
-        reply_markup=inline_kb
+        reply_markup=inline_kb,
+        disable_web_page_preview=True
     )
 
 # ---------- START ----------
