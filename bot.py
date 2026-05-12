@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 
 # ---------- CONFIG ----------
 API_TOKEN = os.getenv("API_TOKEN")
-CHANNEL_ID = "@bi11ionaire"
+CHANNEL_ID = "@DataB8"
 GIF_ID = "CgACAgIAAxkBAAIFo2nouVA6zP0KFKpM0KnvY_KFODitAALumgACuo15SoosersvVltBOwQ"
 
 UPDATE_INTERVAL = 120   # обновление данных
