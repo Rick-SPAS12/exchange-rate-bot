@@ -84,7 +84,7 @@ def fetch_data():
             icon = "🟢" if ch > 0 else "🔴"
             text += f"<code>{s}</code> {sign}{ch:.2f}% {icon}\n"
 
-        text += "\n📌 @bi11ionaire"
+        text += "\n📌 @DataB8"
         state["top_movers_text"] = text
 
     except Exception as e:
