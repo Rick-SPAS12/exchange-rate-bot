@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 
 # ---------- TOKEN ----------
-API_TOKEN = os.getenv("API_TOKEN") or "PASTE_YOUR_TOKEN_HERE"
+API_TOKEN = os.getenv("API_TOKEN")
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -101,6 +101,8 @@ def get_top_movers():
         movers = []
 
         for c in r:
+            if not isinstance(c, dict):
+                continue
             ch = c.get("price_change_percentage_1h_in_currency")
             if ch is None:
                 continue
@@ -124,7 +126,6 @@ def pct(new, old):
 
 
 def format_price(name, value):
-    # BTC / ETH с разделителями тысяч
     if name in ["BTC", "ETH"]:
         return f"{value:,.0f}"
     return f"{value:.2f}"
@@ -133,7 +134,6 @@ def format_price(name, value):
 def line(sym, name, value, old):
     price = format_price(name, value)
 
-    # если нет старого значения
     if not old:
         return f"{sym} {name}: {price}"
 
@@ -181,7 +181,7 @@ def build_top():
     text += "\n📌 @DataB8"
     return text
 
-# ---------- LOOP ----------
+# ---------- LOOPS ----------
 async def updater():
     global cache, prev_cache
 
@@ -196,34 +196,46 @@ async def updater():
 async def market_poster():
     global last_market_post
 
+    await asyncio.sleep(5)
+
     while True:
         if cache:
             text = build_text()
 
             if text != last_market_post:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True
-                )
-                last_market_post = text
+                try:
+                    await bot.send_message(
+                        CHANNEL_ID,
+                        text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True
+                    )
+                    last_market_post = text
+                    print("✅ MARKET SENT")
+                except Exception as e:
+                    print(f"❌ MARKET ERROR: {e}")
 
         await asyncio.sleep(300)
 
 async def top_poster():
     global last_top_post
 
+    await asyncio.sleep(10)
+
     while True:
         text = build_top()
 
         if text != last_top_post:
-            await bot.send_message(
-                CHANNEL_ID,
-                text,
-                disable_web_page_preview=True
-            )
-            last_top_post = text
+            try:
+                await bot.send_message(
+                    CHANNEL_ID,
+                    text,
+                    disable_web_page_preview=True
+                )
+                last_top_post = text
+                print("✅ TOP SENT")
+            except Exception as e:
+                print(f"❌ TOP ERROR: {e}")
 
         await asyncio.sleep(3600)
 
