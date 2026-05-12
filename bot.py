@@ -279,7 +279,7 @@ async def async_fetch_all_data():
         logging.warning(f"Points update error: {e}")
     
     # Top Movers
-            try:
+    try:
         top_res = await asyncio.to_thread(
             lambda: requests.get(
                 "https://api.coingecko.com/api/v3/coins/markets",
