@@ -279,7 +279,7 @@ async def async_fetch_all_data():
         logging.warning(f"Points update error: {e}")
     
     # Top Movers
-    try:
+            try:
         top_res = await asyncio.to_thread(
             lambda: requests.get(
                 "https://api.coingecko.com/api/v3/coins/markets",
@@ -288,11 +288,14 @@ async def async_fetch_all_data():
             ).json()
         )
         movers = []
-        for c in top_res:
-            ch = c.get("price_change_percentage_1h_in_currency")
-            price = c.get("current_price")
-            if ch is not None and price is not None:
-                movers.append({"s": c["symbol"].upper(), "c": float(ch), "price": float(price)})
+        if isinstance(top_res, list):
+            for c in top_res:
+                if not isinstance(c, dict):
+                    continue
+                ch = c.get("price_change_percentage_1h_in_currency")
+                price = c.get("current_price")
+                if ch is not None and price is not None:
+                    movers.append({"s": c["symbol"].upper(), "c": float(ch), "price": float(price)})
         if not movers:
             movers = FALLBACK_MOVERS
         movers.sort(key=lambda x: abs(x["c"]), reverse=True)
