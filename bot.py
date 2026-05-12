@@ -28,6 +28,7 @@ state = {
 
 # ---------- DATA ----------
 def fetch_data():
+    global state
     try:
         res = requests.get(
             "https://api.coingecko.com/api/v3/simple/price",
@@ -87,6 +88,7 @@ def fetch_data():
         text += "\n📌 @DataB8"
         state["top_movers_text"] = text
 
+        logging.info("✅ Data updated")
     except Exception as e:
         logging.error(f"Fetch error: {e}")
 
@@ -147,49 +149,37 @@ async def top(m: types.Message):
     except:
         await m.answer(state["top_movers_text"], parse_mode="HTML")
 
-# ---------- LOOPS ----------
+# ---------- LOOPS (ИСПРАВЛЕНО) ----------
 async def data_loop():
     while True:
-        await asyncio.to_thread(fetch_data)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, fetch_data)
         await asyncio.sleep(UPDATE_INTERVAL)
 
 async def market_loop():
     await asyncio.sleep(5)
-
-    # первый пост сразу
-    try:
-        await bot.send_message(CHANNEL_ID, build_market(), parse_mode="HTML")
-    except Exception as e:
-        logging.error(e)
-
     while True:
-        await asyncio.sleep(MARKET_INTERVAL)
         try:
             await bot.send_message(CHANNEL_ID, build_market(), parse_mode="HTML")
             logging.info("MARKET SENT")
         except Exception as e:
             logging.error(f"Market error: {e}")
+        await asyncio.sleep(MARKET_INTERVAL)
 
 async def top_loop():
     await asyncio.sleep(10)
-
-    # первый пост сразу
-    try:
-        await bot.send_animation(CHANNEL_ID, GIF_ID, caption=state["top_movers_text"], parse_mode="HTML")
-    except Exception as e:
-        logging.error(e)
-
     while True:
-        await asyncio.sleep(TOP_INTERVAL)
         try:
             await bot.send_animation(CHANNEL_ID, GIF_ID, caption=state["top_movers_text"], parse_mode="HTML")
             logging.info("TOP SENT")
         except Exception as e:
             logging.error(f"TOP error: {e}")
+        await asyncio.sleep(TOP_INTERVAL)
 
 # ---------- START ----------
 async def on_startup(_):
-    await asyncio.to_thread(fetch_data)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, fetch_data)
 
     asyncio.create_task(data_loop())
     asyncio.create_task(market_loop())
